@@ -1,0 +1,5069 @@
+'Version 3.2.10 beta 2016/05/27 by Tony
+
+'================Public functions==============================
+
+Sub Series_Com (Command_Set)
+	VbWindow("Frm_Series").Activate
+	VbWindow("Frm_Series").VbEditor("Command Set").Type Command_Set
+	VbWindow("Frm_Series").VbButton("Start").Click		
+
+	Do 
+		Wait 1
+		status = VbWindow("Frm_Series").VbEdit("Test_Status").GetROProperty("Text")
+	Loop While status = "Running"
+End Sub
+
+Function Series_Com_Chk (Command_Set)
+	VbWindow("Frm_Series").Activate
+	VbWindow("Frm_Series").VbEditor("Command Set").Type Command_Set
+	VbWindow("Frm_Series").VbButton("Start").Click		
+
+	Do 
+		Wait 1
+		status = VbWindow("Frm_Series").VbEdit("Test_Status").GetROProperty("Text")
+	Loop While status = "Running"
+
+	'Return result
+	Series_Com_Chk= status
+End Function
+
+Sub Dos_Cmd_Wait (CmdPath, Cmd, Parameter, TimeLimit)
+	'Create batch file with file path
+	Set fso = CreateObject("Scripting.FileSystemObject")
+	Set f = fso.OpenTextFile(CmdPath & "\CMD.bat", 2, True)
+	f.Write "cd/d " & CmdPath & Chr(13) & Chr(10)
+	If Parameter <> "" Then
+		f.Write Cmd & " " & Parameter
+	Else
+		f.Write Cmd
+	End If
+	f.Close
+
+	'Exechte batch file
+	Set WshShell = CreateObject("WScript.Shell")	
+	WshShell.Run CmdPath & "\CMD.bat"      
+
+	'Define console window
+	Set ConsoleWin = Window("regexpwndclass:=ConsoleWindowClass", "text:=C:\\WINNT\\system32\\cmd.exe")
+
+	'Wait for window close
+	watiTime = 0
+	Do
+		watiTime = watiTime + 1
+		Wait 1
+	Loop While ConsoleWin.Exist(1) And watiTime < TimeLimit
+End Sub
+
+'==================SW Box functions===========================
+'Switch COM port with switch box.
+Sub SW_Com (Com_port, Wait_time)
+	Set WshShell = CreateObject("WScript.Shell")	
+
+	Select Case Com_port
+		Case "Com1"        
+			WshShell.Run Environment("Tools_Path") & "\SWBox\SW_COM1.bat"               
+            
+        Case "Com2"             
+            WshShell.Run Environment("Tools_Path") & "\SWBox\SW_COM2.bat"
+            
+        Case "Com3"           
+            WshShell.Run Environment("Tools_Path") & "\SWBox\SW_COM3.bat"
+            
+        Case "Com4"            
+            WshShell.Run Environment("Tools_Path") & "\SWBox\SW_COM4.bat"
+
+       Case "SW_Reset"            
+            WshShell.Run Environment("Tools_Path") & "\SWBox\SW-All-Off.bat"       
+		
+	End Select
+
+	Wait CInt(Wait_time)
+
+End Sub
+
+'Switch Ethernet line with switch box.
+Sub  SW_Line (SWCmd, WaitTime)
+	LBit = False
+	HBit = False
+	SWLCmd = 0
+	SWHCmd = 0	
+
+	'Get command
+	If InStr(1, SWCmd, "|") > 0 Then
+		ArrSWCmd = Split(SWCmd, "|")
+		CaseArr = UBound(ArrSWCmd)
+	Else
+		Dim ArrSWCmd(1)
+		ArrSWCmd(0) = SWCmd	
+		CaseArr = 0
+	End If
+
+	For i = 0 to CaseArr
+		Port = Mid(ArrSWCmd(i), 1, InStr(1, ArrSWCmd(i), "=") -1)
+		Status = Mid(ArrSWCmd(i), InStr(1, ArrSWCmd(i), "=") + 1)
+
+		For j = 1 to 8
+			'Port 1~8
+			If UCase(Port) = "PORT" & Trim(CStr(j)) Then
+				LBit = True
+				If UCase(Status) = "OFF" Then
+					SWLCmd = SWLCmd + 2^(j-1)
+				End If
+			End If
+
+			'Port 9~16
+			If UCase(Port) = "PORT" & Trim(CStr(j+8)) Then
+				HBit = True
+				If UCase(Status) = "OFF" Then
+					SWHCmd = SWHCmd + 2^(j-1)
+				End If
+			End If
+		Next
+   Next
+   
+   'Get LPT Port IO start memory
+   Set wmiService = GetObject("winmgmts:\\.\root\cimv2")
+	Set parallelports = wmiService.ExecQuery("SELECT * FROM Win32_ParallelPort")
+	
+	For Each port In parallelports
+	    Set port_resources = wmiService.ExecQuery("ASSOCIATORS OF {Win32_ParallelPort.DeviceID='" & port.DeviceID & "'} WHERE ResultClass = Win32_PortResource")
+	    x=0
+	    For Each port_resource In port_resources
+			if x=0 then
+				IONum=port_resource.Caption
+			end if
+			x=x+1
+	    Next
+	Next
+	
+	IONum=mid(IONum,instr(IONum,"0x0000")+6,4)
+	
+	StartMemory=HexToDec(IONum)
+	ControlMemory=StartMemory+2
+
+	If LBit Then
+		Control_Port=13
+	End If
+	If HBit Then
+		Control_Port=7
+	End If	
+	
+	InvokeApplication Environment("Tools_Path") & "\SWBox\Lansw.exe  " & ControlMemory & " 15"
+	Wait 0.5
+	InvokeApplication Environment("Tools_Path") & "\SWBox\Lansw.exe  " & StartMemory & " " & CStr(SWLCmd)
+	Wait 0.5
+	InvokeApplication Environment("Tools_Path") & "\SWBox\Lansw.exe  " & ControlMemory & " " & Control_Port
+	Wait 0.5
+	InvokeApplication Environment("Tools_Path") & "\SWBox\Lansw.exe  " & ControlMemory & " 15"
+	Wait 0.5
+	Wait WaitTime
+
+End Sub
+
+Function HexToDec( hexStr )
+ 
+    HexToDec = CLng( "&H" & Trim( hexStr ) )
+ 
+End Function
+
+'=================Commands of Series_Com=====================
+'Set using console port to Local COM port which be selected in setting form.
+Sub Local_COM
+	Series_Com "Local"
+End Sub
+
+'Set using console port to Remote COM port which be selected in setting form.
+Sub Remote_COM
+	Series_Com "Remote"
+End Sub
+
+'Login console line interface. (For new model)
+Sub CI_Login (Model_Type, Username, Password)
+	Series_Com ("CI_Login|" &Model_Type & "|" & Username & "|" & Password )
+End Sub
+
+'Login console line interface. (For old model)
+Sub CLI_Login (Username, Password)
+	Series_Com ("CLI_Login|" & Username & "|" & Password )
+End Sub
+
+'Set single command in console line interface.
+Sub CI_Cmd (Menu, Cmd)
+	Series_Com ("CI_Cmd|" & Menu & "|" & Cmd )
+End Sub
+
+'Set more then one commands in console line interface.
+Sub CI_Cmd_More (Cmd_Arr)
+	Cmd_Set="CI_Cmd_More"
+
+	For i=0 to UBound(Cmd_Arr)
+		Cmd_Set=Cmd_Set & "|" & Cmd_Arr(i)
+	Next
+	Series_Com ( Cmd_Set)
+End Sub
+
+'Check firmware version in console line interface.
+Sub CI_Cmd_Scan_Firmware (Menu, Cmd, Wait_Time, Label_Name, Firmware_Version)
+	Result=Series_Com_Chk ("CI_Cmd_Scan_Firmware|" & Menu & "|" & Cmd & "|" & Wait_Time & "|" & Label_Name & "|" & Firmware_Version)
+
+	If Result="PASS" Then
+		Reporter.ReportEvent micPass, "CI_Cmd_Scan_Firmware", "Check firmware version"
+	ElseIf Result="FAIL" Then
+		'Capture console message
+		VbWindow("Frm_Series").Activate
+		VbWindow("Frm_Series").VbButton("Capture Terminal").Click
+		Wait 0.5
+		
+		Do 
+			'Report tab
+			VbWindow("Frm_Series").WinObject("TitleTab").Click 267,10
+		Loop Until VbWindow("Frm_Series").WinObject("Report Text").Exist(1)
+		
+		data=VbWindow("Frm_Series").WinObject("Report Text").GetROProperty("Text")
+		Reporter.ReportEvent micFail, "CI_Cmd_Scan_Firmware",data
+		
+		
+		VbWindow("Frm_Series").VbButton("Report_Clear").Click
+		Wait 0.5
+	End If
+End Sub
+
+'Set a command in console line interface and check results.
+Sub CI_Cmd_Scan (Cmd_Arr)
+	Cmd_Set="CI_Cmd_Scan"
+
+	For i=0 to UBound(Cmd_Arr)
+		Cmd_Set=Cmd_Set & "|" & Cmd_Arr(i)
+	Next
+	Result=Series_Com_Chk(Cmd_Set)
+
+	If Result="PASS" Then
+		Reporter.ReportEvent micPass, "CI_Cmd_Scan", Cmd_Set
+	ElseIf Result="FAIL" Then
+		'Capture console message
+		VbWindow("Frm_Series").Activate
+		VbWindow("Frm_Series").VbButton("Capture Terminal").Click
+		Wait 0.5
+		
+		Do 
+			'Report tab
+			VbWindow("Frm_Series").WinObject("TitleTab").Click 267,10
+		Loop Until VbWindow("Frm_Series").WinObject("Report Text").Exist(1)
+		
+		data=VbWindow("Frm_Series").WinObject("Report Text").GetROProperty("Text")
+		Reporter.ReportEvent micFail, "CI_Cmd_Scan",data		
+		
+		VbWindow("Frm_Series").VbButton("Report_Clear").Click
+		Wait 0.5
+	End If
+End Sub
+
+'Set a command in console line interface and check results, expect results are fail.
+Sub CI_Cmd_Scan_Fail (Cmd_Arr)
+	Cmd_Set="CI_Cmd_Scan_Fail"
+
+	For i=0 to UBound(Cmd_Arr)
+		Cmd_Set=Cmd_Set & "|" & Cmd_Arr(i)
+	Next
+	Result=Series_Com_Chk(Cmd_Set)
+
+	If Result="PASS" Then
+		Reporter.ReportEvent micPass, "CI_Cmd_Scan_Fail", Cmd_Set
+	ElseIf Result="FAIL" Then
+		Reporter.ReportEvent micFail, "CI_Cmd_Scan_Fail", Cmd_Set
+	End If
+End Sub
+
+'Do ping test in console line interface.
+Sub CI_Cmd_Ping (Menu, Cmd, PASS_FAIL)
+	Result=Series_Com_Chk("CI_Cmd_Ping|" & Menu & "|" & Cmd & "|" & PASS_FAIL)
+
+	If PASS_FAIL="PASS" Then
+		If Result="PASS" Then
+			Reporter.ReportEvent micPass, "CI_Cmd_Ping", Cmd
+		ElseIf Result="FAIL" Then
+			Reporter.ReportEvent micFail, "CI_Cmd_Ping", Cmd
+		End If
+	ElseIf  PASS_FAIL="FAIL" Then
+		If Result="PASS" Then
+			Reporter.ReportEvent micPass, "CI_Cmd_Ping(FAIL)", Cmd
+		ElseIf Result="FAIL" Then
+			Reporter.ReportEvent micFail, "CI_Cmd_Ping(FAIL)", Cmd
+		End If
+	End If
+End Sub
+
+'Reboot DUT and enter debug mode.
+Sub Debug_Mode (Model_Type)
+	Series_Com ("Debug_Mode|" &  Model_Type)
+End Sub
+
+'Reboot DUT and enter debug mode. Custom process for enter debug mode.
+Sub Debug_Mode_Custom (Reboot_Cmd, Key_Word, Press_Key, CLI_Title)
+	Series_Com ("Debug_Mode|Custom|" & Reboot_Cmd & "|" & Key_Word & "|" & Press_Key & "|" & CLI_Title)
+End Sub
+
+'Set values in ZyNOS SMT menu.
+Sub SMT_Edit (Cmd_Arr)
+	Cmd_Set="SMT_Edit"
+
+	For i=0 to UBound(Cmd_Arr)
+		Cmd_Set=Cmd_Set & "|" & Cmd_Arr(i)
+	Next
+	Series_Com ( Cmd_Set)
+End Sub
+
+'Search more values in ZyNOS SMT menu.
+Sub SMT_Scan (Cmd_Arr)
+	Cmd_Set="SMT_Scan"
+
+	For i=0 to UBound(Cmd_Arr)
+		Cmd_Set=Cmd_Set & "|" & Cmd_Arr(i)
+	Next
+	Result=Series_Com_Chk(Cmd_Set)
+
+	If Result="PASS" Then
+		Reporter.ReportEvent micPass, "SMT_Scan", Cmd_Set
+	ElseIf Result="FAIL" Then
+		Reporter.ReportEvent micFail, "SMT_Scan", Cmd_Set
+	End If
+End Sub
+
+'Send file with console line in XModem mode.
+Sub XModem_Send (File_Path, Check_Flag)
+	Series_Com ("XModem_Send|" & File_Path & "|" & Check_Flag )
+End Sub
+
+'Get file with console line in XModem mode.
+Sub XModem_Get (File_Path, Check_Flag)
+	Series_Com ("XModem_Get|" & File_Path & "|" & Check_Flag )
+End Sub
+
+'Get console contents and show it on report.
+Sub CLI_Capture (Cmd, Wait_Time)
+	Series_Com ("CLI_Capture|" & Cmd & "|" & Wait_Time )
+
+	Do 
+		'Report tab
+		VbWindow("Frm_Series").WinObject("TitleTab").Click 267,10
+	Loop Until VbWindow("Frm_Series").WinObject("Report Text").Exist(1)
+		
+	CapData=VbWindow("Frm_Series").WinObject("Report Text").GetROProperty("text")
+	Reporter.ReportEvent micDone, "CLI_Capture", CapData
+	VbWindow("Frm_Series").VbButton("Report_Clear").Click
+	Wait 1	
+End Sub
+
+'Change value of a variable. Or get value from CLI and put the value into a variable.
+Sub Set_Var(Cmd, Variable_ID)
+	If InStr(1,Cmd,"=")>0 Then
+		vType=Mid(cmd,1,InStr(1,cmd,"=")-1)
+		vValue=Mid(cmd,InStr(1,cmd,"=")+1)
+	Else
+		vType=cmd
+		vValue=""
+	End If
+
+	data=""	
+	Select Case UCase(vType)
+		Case "DUT_IP"
+			Series_Com ("Get_IP|" & vValue )
+			data = VbWindow("Frm_Series").VbEdit("value_string").GetROProperty("Text")
+			If data="" Then
+				Reporter.ReportEvent micFail, "Set_Var", "Get IP failed"
+			Else
+				Environment(Variable_ID)=data
+				Reporter.ReportEvent micDone, "Set_Var", Variable_ID & "=" & data
+			End If
+
+		Case "DUT_IP_L"
+			Series_Com ("Get_IP_L|" & vValue )
+			data = VbWindow("Frm_Series").VbEdit("value_string").GetROProperty("Text")
+			If data="" Then
+				Reporter.ReportEvent micFail, "Set_Var", "Get IP failed."
+			Else
+				Environment(Variable_ID)=data
+				Reporter.ReportEvent micDone, "Set_Var", Variable_ID & "=" & data
+			End If
+
+		Case "DUT_IP_L2"
+			Series_Com ("Get_IP_L2|" & vValue )
+			data = VbWindow("Frm_Series").VbEdit("value_string").GetROProperty("Text")
+			If data="" Then
+				Reporter.ReportEvent micFail, "Set_Var", "Get IP failed."
+			Else
+				Environment(Variable_ID)=data
+				Reporter.ReportEvent micDone, "Set_Var", Variable_ID & "=" & data
+			End If
+
+		Case "DUT_MAC_L"
+			Series_Com ("Get_MAC_L|" & vValue )
+			data = VbWindow("Frm_Series").VbEdit("value_string").GetROProperty("Text")
+			If data="" Then
+				Reporter.ReportEvent micFail, "Set_Var", "Get MAC failed."
+			Else
+				Environment(Variable_ID)=data
+				Reporter.ReportEvent micDone, "Set_Var", Variable_ID & "=" & data
+			End If
+
+		Case "PC_IP"
+			If InStr(1,CStr(Environment("OS")),"XP")>0 Then
+				data = IPConfig("ipconfig", vValue, "IP Address", "", "")
+			Else
+				data = IPConfig("ipconfig", vValue, "IPv4 位址", "", "")
+			End If
+			If data="" Then
+				Reporter.ReportEvent micFail, "Set_Var", "Get IP failed."
+			Else
+				Environment(Variable_ID)=data
+				Reporter.ReportEvent micDone, "Set_Var", Variable_ID & "=" & data
+			End If
+		
+		Case "VALUE"
+			Environment(Variable_ID)=vValue
+			Reporter.ReportEvent micDone, "Set_Var", Variable_ID & "=" & vValue
+
+		Case "UCASE"
+			data=Environment(Variable_ID)
+			Environment(Variable_ID)=UCase(data)
+			Reporter.ReportEvent micDone, "Set_Var", Variable_ID & "=" & UCase(data)
+
+		Case "LCASE"
+			data=Environment(Variable_ID)
+			Environment(Variable_ID)=LCase(data)
+			Reporter.ReportEvent micDone, "Set_Var", Variable_ID & "=" & LCase(data)
+
+		Case "PC_IP6"
+			Close_Process "cmd.exe"
+			Dos_Cmd "cmd"
+			Window("Cmd").Type "ipconfig /all > F:\ipconfig.txt"+ micReturn
+			Wait 3
+			Window("Cmd").Close
+		
+			Set fso = CreateObject("Scripting.FileSystemObject")
+			Set f = fso.GetFile("F:\ipconfig.txt")
+			Set ts = fso.OpenTextFile("F:\ipconfig.txt")
+			fileData = ts.ReadAll
+		
+			mk1=InStr(1,fileData, vValue)
+			mk2=InStr(mk1,fileData,"adapter ")
+			AdapterContent = Mid(fileData, mk1, mk2-mk1)
+			
+			If InStr(1,CStr(Environment("OS")),"XP")>0 Then
+				ip1=InStr(1,AdapterContent,"IP Address")
+				ip2=InStr(ip1+10,AdapterContent,"IP Address")
+			Else
+				ip1=InStr(1,AdapterContent,"IPv4 位址")
+				ip2=InStr(ip1+10,AdapterContent,"IPv4 位址")
+			End If
+			
+			ip3=InStr(ip2+10,AdapterContent,Chr(13))
+			TheIP=Mid(AdapterContent, ip2, ip3-ip2)
+			p=InStr(1,TheIP,":")
+			data=Trim(Mid(TheIP, p+1))
+
+			If data="" Then
+				Reporter.ReportEvent micFail, "Set_Var", "Get IP failed."
+			Else
+				Environment(Variable_ID)=data
+				Reporter.ReportEvent micDone, "Set_Var", Variable_ID & "=" & data
+			End If
+			ts.Close
+	End Select	
+End Sub
+
+'Log console contents to a text file.
+Sub LogStart (Log_File, Local_Remote)
+	VbWindow("Frm_Series").Activate
+	VbWindow("Frm_Series").VbEdit("value_string").Set ""
+	VbWindow("Frm_Series").VbEdit("value_string").Set Log_File
+
+	If Local_Remote="Remote" Then
+		Do 
+			'Remote
+			VbWindow("Frm_Series").WinObject("TitleTab").Click 84,13
+		Loop Until VbWindow("Frm_Series").VbEditor("Command Set").Exist(1)
+	Else
+		Do 
+		   'Loacal tab
+			VbWindow("Frm_Series").WinObject("TitleTab").Click 20,9
+		Loop Until VbWindow("Frm_Series").VbEditor("Command Set").Exist(1)
+	End If
+	VbWindow("Frm_Series").VbButton("Log Start").Click
+End Sub
+
+'Stop to log console contents.
+Sub LogStop(Local_Remote)
+	VbWindow("Frm_Series").Activate
+
+	If Local_Remote="Remote" Then
+		Do 
+			'Remote
+			VbWindow("Frm_Series").WinObject("TitleTab").Click 84,13
+		Loop Until VbWindow("Frm_Series").VbEditor("Command Set").Exist(1)
+	Else
+		Do 
+		   'Loacal tab
+			VbWindow("Frm_Series").WinObject("TitleTab").Click 20,9
+		Loop Until VbWindow("Frm_Series").VbEditor("Command Set").Exist(1)
+	End If
+	VbWindow("Frm_Series").VbButton("Log Stop").Click
+End Sub
+
+'Set looped commands in CLI 
+Sub CI_Cmd_LoopCmd (Switch, Command, Wait_Time, Loop_Levels, Parameters)
+	Series_Com ("CI_Cmd_LoopCmd|" & Switch & "|" & Command & "|" & Wait_Time & "|" & Loop_Times & "|" & Parameters)
+End Sub
+
+'Hit Esc key in CLI 
+Sub CI_Cmd_Esc
+	Series_Com ("CI_Cmd_Esc")
+End Sub
+
+'Hit Ctrl+X in CLI 
+Sub CI_Cmd_Ctrl (Press_Key)
+	Series_Com ("CI_Cmd_Ctrl|" & Press_Key)
+End Sub
+
+'Change baud rate
+Sub SMT_Change (Local_Remote, Baud_Rate)
+   Series_Com ("SMT_Change|Baud|" & Local_Remote & "|" & Baud_Rate)
+End Sub
+
+'Change COM port
+Sub COM_Change (Local_Remote, COM_Port)
+   Series_Com ("SMT_Change|COM|" & Local_Remote & "|" & COM_Port)
+End Sub
+
+'Get value in CLI and check it with specific condition
+Function CI_Value_Check (Label, Condition, Chk_Option)
+   Result=Series_Com_Chk("CI_Value_Check|" & Label & "|" & Condition & "|" & Chk_Option)
+
+	getValue = VbWindow("Frm_Series").VbEdit("value_string").GetROProperty("text")
+	If Result = "PASS" Then
+		Reporter.ReportEvent micPass, "CI_Value_Check", "Condition: " & Condition &  vbCrLf & "Get value: " & getValue
+	ElseIf Result = "FAIL" Then
+		Reporter.ReportEvent micFail, "CI_Value_Check", "Condition: " & Condition &  vbCrLf & "Get value: " & getValue
+	End If
+
+	CI_Value_Check = VbWindow("Frm_Series").VbEdit("value_string").GetROProperty("text")
+End Function
+
+'===============SMT_Chariot command functions==================
+Function IPConfig(Cmd, NIC, Check_Item, Object_Value, PASS_FAIL)
+	
+	if Instr(GetOS,"XP") then
+		VbWindow("Frm_Series").Activate
+		Do 
+			'Dos_Cmd tab
+			VbWindow("Frm_Series").WinObject("TitleTab").Click 199,10
+		Loop Until VbWindow("Frm_Series").VbEdit("DOS_Command").Exist(1)
+
+		VbWindow("Frm_Series").VbEdit("DOS_Command").Set ""
+		VbWindow("Frm_Series").VbEdit("DOS_Command").Set Cmd
+		VbWindow("Frm_Series").VbEdit("DOS_NIC").Set ""
+		VbWindow("Frm_Series").VbEdit("DOS_NIC").Set NIC
+		VbWindow("Frm_Series").VbEdit("DOS_Compare").Set ""
+		VbWindow("Frm_Series").VbEdit("DOS_Compare").Set Check_Item
+		VbWindow("Frm_Series").VbEdit("DOS_ObjectValue").Set ""
+		VbWindow("Frm_Series").VbEdit("DOS_ObjectValue").Set Object_Value
+		VbWindow("Frm_Series").VbButton("Execute").Click
+
+		bCmdFinish=False
+		Do
+			If VbWindow("Frm_Series").Dialog("Dos Cmd").Exist(1) Then
+				VbWindow("Frm_Series").Dialog("Dos Cmd").WinButton("確定").Click
+				bCmdFinish=True
+			End If
+		Loop Until bCmdFinish=True
+		Result=VbWindow("Frm_Series").VbEdit("DOS_Result").GetROProperty("Text")
+
+		If  UCase(PASS_FAIL)="PASS" Then
+			If Result="PASS" Then
+				Reporter.ReportEvent micPass, "IPConfig", "Check " & Check_Item & " of " & NIC
+			Else
+				Reporter.ReportEvent micFail, "IPConfig", VbWindow("Frm_Series").VbList("Dos Display").GetROProperty("all items")
+			End If
+		ElseIf UCase(PASS_FAIL)="FAIL" Then
+			If Result="FAIL" Then
+				Reporter.ReportEvent micPass, "IPConfig(FAIL)", "Check " & Check_Item & " of " & NIC
+			Else
+				Reporter.ReportEvent micFail, "IPConfig(FAIL)", VbWindow("Frm_Series").VbList("Dos Display").GetROProperty("all items")
+			End If
+		End If
+
+		Do 
+			IPConfig = VbWindow("Frm_Series").VbEdit("DOS_RealValue").GetROProperty("Text")
+		   'Loacal tab
+			VbWindow("Frm_Series").WinObject("TitleTab").Click 20,9
+		Loop Until VbWindow("Frm_Series").VbEditor("Command Set").Exist(1)
+	Else
+		'Transfer key word from XP to Win7
+		If Check_Item="Default Gateway" Then
+			Check_Item="預設閘道"
+		End If
+		If Check_Item="Subnet Mask" Then
+			Check_Item="子網路遮罩"
+		End If
+		If Check_Item="IP Address" Then
+			Check_Item="IPv4"
+		End If	
+		
+		'Run Command
+		Set objShell = CreateObject("WScript.Shell")
+		Set objScriptExec = objShell.Exec(Cmd)
+		strPingResults = objScriptExec.StdOut.ReadAll
+		strPingResult=split(strPingResults,vbcrlf)
+
+		tmp=""
+		
+		'Found object_value
+		Flag=False
+		
+		'Start Search
+		bFlag=False
+		
+		For i = 0 To Ubound(strPingResult)
+			If bFlag and Instr(strPingResult(i),"卡") Then
+				bFlag=False
+			End If
+			If Instr(strPingResult(i),NIC) Then
+				bFlag=True
+			End If
+			If Instr(strPingResult(i),Check_Item) and bFlag Then
+				If Instr(Lcase(strPingResult(i)),Lcase(Object_Value)) Then
+					Flag=True
+					tmp=strPingResult(i)
+				End If
+				'Gateway:............
+				'		 192.168.1.1
+				If Instr(Lcase(strPingResult(i+1)),Lcase(Object_Value)) and not Flag Then
+					Flag=True
+					tmp=strPingResult(i+1)
+				End If
+			End If
+		Next
+		
+		if Flag then
+			Result="PASS"
+			If Instr(tmp,":") Then
+				IPConfig=Trim(mid(tmp,instr(tmp,":")+1))
+			Else
+				IPConfig=trim(tmp)
+			End If
+		Else
+			Result="FAIL"
+		End if
+
+		If  UCase(PASS_FAIL)="PASS" Then
+			If Result="PASS" Then
+				Reporter.ReportEvent micPass, "IPConfig", "Check " & Check_Item & " of " & NIC
+			Else
+				Reporter.ReportEvent micFail, "IPConfig",strPingResults
+			End If
+		ElseIf UCase(PASS_FAIL)="FAIL" Then
+			If Result="FAIL" Then
+				Reporter.ReportEvent micPass, "IPConfig(FAIL)", "Check " & Check_Item & " of " & NIC
+			Else
+				Reporter.ReportEvent micFail, "IPConfig(FAIL)", strPingResults
+			End If
+		End If
+	End if
+End Function
+
+'Release IP settings with command “ipconfig /release”.
+Sub IPConfig_release(Wait_Time)
+	if Instr(GetOS,"XP") then
+		VbWindow("Frm_Series").Activate
+
+		Do 
+			'Dos_Cmd tab
+			VbWindow("Frm_Series").WinObject("TitleTab").Click 199,10
+		Loop Until VbWindow("Frm_Series").VbEdit("DOS_Command").Exist(1)
+
+		VbWindow("Frm_Series").VbEdit("DOS_Command").Set ""
+		VbWindow("Frm_Series").VbEdit("DOS_Command").Set "ipconfig /release"
+		VbWindow("Frm_Series").VbEdit("DOS_NIC").Set ""
+		VbWindow("Frm_Series").VbEdit("DOS_Compare").Set ""
+		VbWindow("Frm_Series").VbEdit("DOS_ObjectValue").Set ""
+		VbWindow("Frm_Series").VbButton("Execute").Click
+
+		bCmdFinish=False
+		Do
+			If VbWindow("Frm_Series").Dialog("Dos Cmd").Exist(1) Then
+				VbWindow("Frm_Series").Dialog("Dos Cmd").WinButton("確定").Click
+				bCmdFinish=True
+			End If
+		Loop Until bCmdFinish=True
+		Result=VbWindow("Frm_Series").VbEdit("DOS_Result").GetROProperty("Text")
+
+		Wait CInt(Wait_Time)
+
+		Do 
+		   'Loacal tab
+			VbWindow("Frm_Series").WinObject("TitleTab").Click 20,9
+		Loop Until VbWindow("Frm_Series").VbEditor("Command Set").Exist(1)
+	Else
+		strComputer = "."
+		Set objWMIService = GetObject( _
+			"winmgmts:\\" & strComputer & "\root\cimv2")
+		Set colNetCards = objWMIService.ExecQuery _
+			("Select * From Win32_NetworkAdapterConfiguration " _
+				& "Where IPEnabled = True")
+		For Each objNetCard in colNetCards
+			objNetCard.ReleaseDHCPLease()
+		Next
+	End if
+End Sub
+
+'Do ping test with SMT_Chariot.
+Sub Ping(IP_Address, Packet_Size, Ping_Times, Min_Times, PASS_FAIL)
+	if Instr(GetOS,"XP") then
+		If InStr(1,Packet_Size,"=")>0 Then
+			Packet_Size=Mid(Packet_Size,InStr(1,Packet_Size,"=")+1)
+		End If
+		If InStr(1,Ping_Times,"=")>0 Then
+			Ping_Times=Mid(Ping_Times,InStr(1,Ping_Times,"=")+1)
+		End If
+		If InStr(1,Min_Times,"=")>0 Then
+			Min_Times=Mid(Min_Times,InStr(1,Min_Times,"=")+1)
+		End If
+
+		VbWindow("Frm_Series").Activate
+
+		Do 
+			'Ping
+			VbWindow("Frm_Series").WinObject("TitleTab").Click 140,10
+		Loop Until VbWindow("Frm_Series").VbEdit("Ping_Address").Exist(1)
+
+		VbWindow("Frm_Series").VbEdit("Ping_Address").Set ""
+		VbWindow("Frm_Series").VbEdit("Ping_Address").Set IP_Address
+		VbWindow("Frm_Series").VbEdit("Ping_PacketSize").Set ""
+		VbWindow("Frm_Series").VbEdit("Ping_PacketSize").Set Packet_Size
+		VbWindow("Frm_Series").VbEdit("Ping_Times").Set ""
+		VbWindow("Frm_Series").VbEdit("Ping_Times").Set Ping_Times
+		VbWindow("Frm_Series").VbEdit("Ping_Spec").Set ""
+		VbWindow("Frm_Series").VbEdit("Ping_Spec").Set Min_Times
+		VbWindow("Frm_Series").VbEdit("Ping_Judge").Set ""
+		VbWindow("Frm_Series").VbEdit("Ping_Judge").Set PASS_FAIL
+		VbWindow("Frm_Series").VbButton("Execute").Click
+
+		Do
+			Wait 1
+			Result = VbWindow("Frm_Series").VbEdit("Ping_Result").GetROProperty("Text")
+		Loop While Result  = "Testing..."
+
+		If UCase(PASS_FAIL)="PASS" Then
+			If Result="PASS" Then
+				Reporter.ReportEvent micPass, "Ping", "Ping " & IP_Address
+			Else
+				Reporter.ReportEvent micFail,"Ping", "Ping " & IP_Address
+			End If
+		ElseIf UCase(PASS_FAIL)="FAIL" Then
+			If Result="FAIL" Then
+				Reporter.ReportEvent micPass, "Ping(FAIL)", "Ping " & IP_Address
+			Else
+				Reporter.ReportEvent micFail,"Ping(FAIL)", "Ping " & IP_Address
+			End If
+		End If
+
+		Do 
+		   'Loacal tab
+			VbWindow("Frm_Series").WinObject("TitleTab").Click 20,9
+		Loop Until VbWindow("Frm_Series").VbEditor("Command Set").Exist(1)
+	Else
+	
+		'Transfer key word from XP to Win7
+		If Packet_Size="" Then
+			Packet_Size=32
+		ElseIf Instr(Packet_Size,"=") Then
+			Packet_Size=mid(Packet_Size,instr(Packet_Size,"=")+1)
+		End If
+		If Ping_Times="" Then
+			Ping_Times=4
+		ElseIf Instr(Ping_Times,"=") Then
+			Ping_Times=mid(Ping_Times,instr(Ping_Times,"=")+1)
+		End If
+		If Instr(Min_Times,"=") Then
+			Min_Times=mid(Min_Times,instr(Min_Times,"=")+1)
+		End If
+		
+		Set objShell = CreateObject("WScript.Shell")
+		Set objScriptExec = objShell.Exec( _
+			"ping -n " & Ping_Times & " -l " & Packet_Size & " -w 1000 " & IP_Address)
+		strPingResults = LCase(objScriptExec.StdOut.ReadAll)
+		strPingResult=split(strPingResults,vbcrlf)
+		
+		Times=0
+		
+		For i = 0 To Ubound(strPingResult)
+			If InStr(strPingResult(i), "reply from") or InStr(strPingResult(i), "回覆") Then
+				If InStr(strPingResult(i), "destination net unreachable") or InStr(strPingResult(i), "無法連線") Then
+				else
+					Times=Times+1
+				End if
+			End if
+		Next
+
+		If Cint(Min_Times) > Cint(Times)  Then
+			Result="FAIL"
+		Else
+			Result="PASS"
+		End If
+
+		Reporter.ReportEvent micDone,"Ping", strPingResults
+
+		If UCase(PASS_FAIL)="PASS" Then
+			If Result="PASS" Then
+				Reporter.ReportEvent micPass, "Ping", "Ping " & IP_Address
+			Else
+				Reporter.ReportEvent micFail,"Ping", "Ping " & IP_Address
+			End If
+		ElseIf UCase(PASS_FAIL)="FAIL" Then
+			If Result="FAIL" Then
+				Reporter.ReportEvent micPass, "Ping(FAIL)", "Ping " & IP_Address
+			Else
+				Reporter.ReportEvent micFail,"Ping(FAIL)", "Ping " & IP_Address
+			End If
+		End If
+	End if
+End Sub
+
+'Add Ping Result and return
+Function Ping_Return(IP_Address, Packet_Size, Ping_Times, Min_Times)
+	If Packet_Size="" Then
+		Packet_Size=32
+	End If
+	If Ping_Times="" Then
+		Ping_Times=4
+	End If
+	Set objShell = CreateObject("WScript.Shell")
+	Set objScriptExec = objShell.Exec( _
+		"ping -n " & Ping_Times & " -l " & Packet_Size & " -w 1000 " & IP_Address)
+	strPingResults = LCase(objScriptExec.StdOut.ReadAll)
+	strPingResult=split(strPingResults,vbcrlf)
+	
+	Times=0
+	
+	For i = 0 To Ubound(strPingResult)
+		If InStr(strPingResult(i), "reply from") or InStr(strPingResult(i), "回覆") Then
+			If InStr(strPingResult(i), "destination net unreachable") or InStr(strPingResult(i), "無法連線") Then
+			else
+				Times=Times+1
+			End if
+		End if
+	Next
+
+	If Cint(Min_Times) > Cint(Times)  Then
+		Ping_Return="FAIL"
+	Else
+		Ping_Return="PASS"
+	End If
+
+	Reporter.ReportEvent micDone,"Ping", strPingResults
+
+End Function
+
+Sub Ping6(IP_Address, PASS_FAIL)
+	Close_Process "cmd.exe"
+	Dos_Cmd "cmd"
+	Window("Cmd").Type "ping6 "+IP_Address+" > F:\ping.txt"+ micReturn
+	Wait 7
+	Window("Cmd").Close
+
+	PingResult=Ngrep_Search_Return (Array("F:\ping.txt", "Reply from "+IP_Address))
+
+	If UCase(PASS_FAIL)="PASS" Then
+		If PingResult=True Then
+			Reporter.ReportEvent micPass, "Ping6", "Ping6 " & IP_Address
+		Else
+			Reporter.ReportEvent micFail,"Ping6", "Ping6 " & IP_Address
+		End If
+	ElseIf UCase(PASS_FAIL)="FAIL" Then
+		If PingResult=False Then
+			Reporter.ReportEvent micPass, "Ping6(FAIL)", "Ping6 " & IP_Address
+		Else
+			Reporter.ReportEvent micFail,"Ping6(FAIL)", "Ping6 " & IP_Address
+		End If
+	End If
+End Sub
+
+
+'Do trace route test with SMT_Chariot.
+Sub Tracert (Cmd, Object_Value, PASS_FAIL)
+If Instr(Check_OS,"XP") Then
+	VbWindow("Frm_Series").Activate
+
+	Do 
+		'Dos_Cmd tab
+		VbWindow("Frm_Series").WinObject("TitleTab").Click 199,10
+	Loop Until VbWindow("Frm_Series").VbEdit("DOS_Command").Exist(1)
+
+	VbWindow("Frm_Series").VbEdit("DOS_Command").Set ""
+	VbWindow("Frm_Series").VbEdit("DOS_Command").Set Cmd
+	VbWindow("Frm_Series").VbEdit("DOS_NIC").Set ""
+	VbWindow("Frm_Series").VbEdit("DOS_Compare").Set ""
+	VbWindow("Frm_Series").VbEdit("DOS_ObjectValue").Set ""
+	VbWindow("Frm_Series").VbEdit("DOS_ObjectValue").Set Object_Value
+	VbWindow("Frm_Series").VbButton("Execute").Click
+
+	bCmdFinish=False
+	Do
+		If VbWindow("Frm_Series").Dialog("Dos Cmd").Exist(1) Then
+			VbWindow("Frm_Series").Dialog("Dos Cmd").WinButton("確定").Click
+			bCmdFinish=True
+		End If
+	Loop Until bCmdFinish=True
+	Result=VbWindow("Frm_Series").VbEdit("DOS_Result").GetROProperty("Text")
+
+	If  UCase(PASS_FAIL)="PASS" Then
+		If Result="PASS" Then
+			Reporter.ReportEvent micPass, "Tracert", Cmd
+		Else
+			Reporter.ReportEvent micFail, "Tracert", Cmd
+		End If
+	ElseIf UCase(PASS_FAIL)="FAIL" Then
+		If Result="FAIL" Then
+			Reporter.ReportEvent micPass, "Tracert(FAIL)", Cmd
+		Else
+			Reporter.ReportEvent micFail, "Tracert(FAIL)", Cmd
+		End If
+	End If
+
+	Do 
+	   'Loacal tab
+		VbWindow("Frm_Series").WinObject("TitleTab").Click 20,9
+	Loop Until VbWindow("Frm_Series").VbEditor("Command Set").Exist(1)
+Else
+	
+	Set objShell = CreateObject("WScript.Shell")
+	Set objScriptExec = objShell.Exec(Cmd)
+	Wait_Time=0
+	strPingResults=""
+	
+	Do
+		 Wait_Time= Wait_Time+1
+		 wait 1
+	Loop Until Wait_Time > 90 or not IsRunning("tracert.exe")
+	
+	 strPingResults = LCase(objScriptExec.StdOut.ReadAll)
+	
+	If Wait_Time > 90 Then
+		Reporter.ReportEvent micFail, "Tracert", "Request Time Out" & vbcrlf & strPingResults
+	Else
+		If Instr(strPingResults,"追蹤完成") Then
+			If Object_Value <> "" Then
+				If Instr(strPingResults,Object_Value) Then
+					Result="PASS"
+				Else
+					Result="FAIL"
+				End If
+			Else
+				Result="PASS"
+			End If
+		Else
+			Result="FAIL"
+		End If
+		
+		If  UCase(PASS_FAIL)="PASS" Then
+			If Result="PASS" Then
+				Reporter.ReportEvent micPass, "Tracert", Cmd
+			Else
+				Reporter.ReportEvent micFail, "Tracert", Cmd & vbcrlf & strPingResults
+			End If
+		ElseIf UCase(PASS_FAIL)="FAIL" Then
+			If Result="FAIL" Then
+				Reporter.ReportEvent micPass, "Tracert(FAIL)", Cmd
+			Else
+				Reporter.ReportEvent micFail, "Tracert(FAIL)", Cmd & vbcrlf & strPingResults
+			End If
+		End If
+	End If
+
+End If
+	
+End Sub
+
+Function IsRunning(Proccess)
+	'Get name form Win32_Process and return true is exist
+	Set objSWbemServices = GetObject ("WinMgmts:Root\Cimv2") 
+	Set colProcess = objSWbemServices.ExecQuery _ 
+	("Select * From Win32_Process where name = '" & Proccess & "'") 
+	Num=0
+	For Each objProcess In colProcess
+		Num=Num+1
+	Next
+	If Num>0 Then
+		IsRunning=True
+	Else
+		IsRunning=False
+	End If
+End Function
+
+'Do a FTP put command
+Sub Dos_Ftp_Put(IP_Address, Port, Username, Password, Put_Cmd)
+	Series_Com ("Dos_Ftp_Put|" & IP_Address & "|" & Port & "|" & Username & "|" & Password & "|" & Put_Cmd)
+
+	Set WshShell = CreateObject("WScript.Shell")
+	WshShell.Run Environment("Tools_Path") & "\ftpstart.bat"
+	Wait 5
+End Sub
+
+'Do a FTP get command
+Sub Dos_Ftp_Get(IP_Address, Port, Username, Password, Get_Cmd)
+	Series_Com ("Dos_Ftp_Get|" & IP_Address & "|" & Port & "|" & Username & "|" & Password & "|" & Get_Cmd)
+
+	Set WshShell = CreateObject("WScript.Shell")
+	WshShell.Run Environment("Tools_Path") & "\ftpstart.bat"
+	Wait 5
+End Sub
+
+'=================Web test functions========================
+
+'Open web page with selected browser in Run Settings.
+Sub Open_Web (URL)
+	If Environment("Browser")="IE" Then
+		If InStr(1,CStr(Environment("OS")),"XP")>0 Then
+			InvokeApplication "C:\Program Files\Internet Explorer\iexplore.exe "  & URL
+			Wait 10
+		Else
+			InvokeApplication "C:\Program Files (x86)\Internet Explorer\iexplore.exe "  & URL
+			Wait 10
+		End If
+	ElseIf Environment("Browser")="Firefox" Then
+		If InStr(1,CStr(Environment("OS")),"XP")>0 Then
+			InvokeApplication "C:\Program Files\Mozilla Firefox\firefox.exe "  & URL
+		Else
+			InvokeApplication "C:\Program Files (x86)\Mozilla Firefox\firefox.exe "  & URL
+		End If
+		
+		If Dialog("Firefox - 瀏覽狀態回復").Exist(10) Then
+			Dialog("Firefox - 瀏覽狀態回復").WinObject("MozillaWindowClass").Type micTab
+			Dialog("Firefox - 瀏覽狀態回復").WinObject("MozillaWindowClass").Type micReturn
+		End If
+	End If
+End Sub
+
+'Open web page with Internet Explorer.
+Sub Open_IE (URL)
+	If InStr(1,CStr(Environment("OS")),"XP")>0 Then
+		InvokeApplication "C:\Program Files\Internet Explorer\iexplore.exe "  & URL
+	Else
+		InvokeApplication "C:\Program Files (x86)\Internet Explorer\iexplore.exe "  & URL
+	End If
+	Wait 10
+End Sub
+
+'Open web page with Firefox.
+Sub Open_Firefox (URL)
+	If InStr(1,CStr(Environment("OS")),"XP")>0 Then
+		InvokeApplication "C:\Program Files\Mozilla Firefox\firefox.exe "  & URL
+	else
+		InvokeApplication "C:\Program Files (x86)\Mozilla Firefox\firefox.exe "  & URL
+	End If	
+
+	If Dialog("Firefox - 瀏覽狀態回復").Exist(10) Then
+		Dialog("Firefox - 瀏覽狀態回復").WinObject("MozillaWindowClass").Type micTab
+		Dialog("Firefox - 瀏覽狀態回復").WinObject("MozillaWindowClass").Type micReturn
+	End If
+End Sub
+
+'Check specific attribute of a web object.
+'Web_Check_Attr Browser("DUT").Page("Security").Frame("Firewall").WebElement("Firewall Security").GetROProperty("outerhtml"), "Medium"
+Sub Web_Check_Attr(Attr_Value, Search_Value)
+ 	If InStr(1,Attr_Value,Search_Value)>0 Then
+		Reporter.ReportEvent micPass, "Web_Check_Attr", "Search " & Search_Value
+	Else
+		Reporter.ReportEvent micFail, "Web_Check_Attr", "Search " & Search_Value
+	End If
+End Sub
+
+'Search more then one values in a WebTable object.
+Sub Web_Scan(Table_Content, Scan_Content, PASS_FAIL)
+	matchCase=0
+ 	ScanCase=Split(Scan_Content, "|")
+
+	ReportContent=""
+	For i=0 to UBound(ScanCase)
+		If InStr(1, Table_Content, ScanCase(i))>0 Then
+			matchCase=matchCase+1
+			ReportContent=ReportContent & ScanCase(i) & ": Y" & Chr(10)
+		Else
+			ReportContent=ReportContent & ScanCase(i) & ": N" & Chr(10)
+		End If
+	Next
+
+	If PASS_FAIL="PASS" Then
+		If matchCase=UBound(ScanCase)+1 Then
+			Reporter.ReportEvent micPass, "Web_Scan", ReportContent 
+		Else
+			Reporter.ReportEvent micFail, "Web_Scan", ReportContent 
+		End If
+	ElseIf PASS_FAIL="FAIL" Then
+		If matchCase=0 Then
+			Reporter.ReportEvent micPass, "Web_Scan(FAIL))", ReportContent 
+		Else
+			Reporter.ReportEvent micFail, "Web_Scan(FAIL))", ReportContent 
+		End If
+	End If
+End Sub
+
+'Return start time for Parental Control setting
+Function PCP_Start_Time (Time_Zone, Set_Current)
+	dutDate = DateAdd("h", CInt(Time_Zone) - 8, Now)
+	If Set_Current = True Then
+		PCP_Start_Time = CStr(Hour(dutDate)) & ":00"
+	Else
+		If CInt(Hour(dutDate)) > 12 Then
+			PCP_Start_Time = CStr(Hour(dutDate)-3) & ":00"
+		Else
+			PCP_Start_Time = CStr(Hour(dutDate)+3) & ":00"
+		End If
+	End If
+
+	If Len(PCP_Start_Time) < 5 Then
+		PCP_Start_Time = "0" & PCP_Start_Time
+	End If
+End Function
+
+'Return end time for Parental Control setting
+Function PCP_End_Time (Time_Zone, Set_Current)
+	dutDate = DateAdd("h", 8 - CInt(Time_Zone), Now)
+	If Set_Current = True Then
+		PCP_End_Time = Hour(dutDate)+1
+	Else
+		If CInt(Hour(dutDate)) > 12 Then
+			PCP_End_Time = Hour(dutDate)-2
+		Else
+			PCP_End_Time = Hour(dutDate)+4
+		End If
+	End If
+
+	If CInt(Minute(dutDate)) < 40 Then
+		PCP_End_Time = CStr(PCP_End_Time) & ":00"
+	Else
+		PCP_End_Time = CStr(PCP_End_Time+1) & ":00"
+	End If
+End Function
+
+'Check if specific channel noise is least in wireless channel status chart.
+Sub Channel_Noise_Check(Check_CH, Arr_CH_Status)
+   chkPass = True
+   For i=1 To UBound(Arr_CH_Status)
+	   If Arr_CH_Status(i) <> "" Then
+			If CInt(Arr_CH_Status(Check_CH)) > CInt(Arr_CH_Status(i)) Then
+				chkPass = False
+				Exit For
+			End If
+	   End If
+   Next
+
+	If chkPass Then
+		Reporter.ReportEvent micPass, "Channel_Noise_Check", "Noise of channel " & Check_CH & " is least."
+	Else
+		Reporter.ReportEvent micFail, "Channel_Noise_Check", "Noise of channel " & Check_CH & " is not least."
+	End If
+End Sub
+
+'Get the Column number by Column name
+Function GetColumn(Table, ColIndex, ColName)
+	For x = 1 to Table.ColumnCount(ColIndex)
+		ColValue=Table.GetCellData(ColIndex, x)
+		If Instr(1, ColValue, ColName) > 0 Then
+			GetColumn = x
+			Exit For
+		End If
+	Next
+End Function
+
+
+'====================System functions======================
+
+'Execute a command or application.
+Sub Dos_Cmd(Cmd)
+	InvokeApplication Cmd
+End Sub
+
+'Close a console window
+Sub Dos_Cmd_Close(Win_Title)
+	If Win_Title<>"" Then
+		Set ConsoleWin = Window("regexpwndclass:=ConsoleWindowClass", "text:=" & Win_Title)
+	Else
+		Set ConsoleWin = Window("regexpwndclass:=ConsoleWindowClass")
+	End If
+	ConsoleWin.Activate
+	ConsoleWin.Type micCtrlDwn & "c" & micCtrlUp
+	
+	If ConsoleWin.Exist(5) Then
+		ConsoleWin.Close
+	End If
+End Sub
+
+'Execute a console application, and save result to text file
+Sub Dos_Cmd_Capture(Cmd, File_Path)
+	'Execute command with Shell
+    Set objShell = CreateObject("WScript.Shell")
+	Set objExec = objShell.Exec(Cmd)
+	Do While objExec.Status = 0
+		Wait 0.1
+	Loop
+
+	'Put result into text file
+	Set fso = CreateObject("Scripting.FileSystemObject")
+	Set CaptureFile = fso.CreateTextFile(File_Path)
+	CaptureFile.Write objExec.StdOut.ReadAll
+	CaptureFile.Close
+End Sub
+
+'Close an application with process name
+Sub Close_Process (Process_Name)
+	On Error Resume Next
+
+	Set objWMIService = GetObject("winmgmts:{impersonationLevel=impersonate}!\\.\root\cimv2")
+	Set colProcessList = objWMIService.ExecQuery("Select * from Win32_Process Where Name = '" & Process_Name & "'")
+	For Each objProcess in colProcessList
+        objProcess.Terminate()
+		Wait 5
+	Next	
+End Sub
+
+'Export file content to report file
+Sub File_Export(File_Path)
+	Set fso = CreateObject("Scripting.FileSystemObject")
+    Set ts = fso.OpenTextFile(File_Path)
+	fileData = ts.ReadAll
+
+	Reporter.ReportEvent micDone, "File_Export", fileData
+End Sub
+
+'Search content in text file
+'Cmd_Arr(0)=<File Path>, Cmd_Arr(1)=PASS/FAIL, Cmd_Arr(2~n)=<Search Strimg>
+Sub Ngrep_Search(Cmd_Arr)
+	Set fso = CreateObject("Scripting.FileSystemObject")
+	If  fso.FileExists(Cmd_Arr(0)) Then
+		Set f = fso.GetFile(Cmd_Arr(0))
+		If f.Size>0 Then
+			Set ts = fso.OpenTextFile(Cmd_Arr(0))
+			
+			fileData = ts.ReadAll
+			
+			bFound=True
+			ContentFound="Content found: " & Chr(10)
+			ContentNotFound="Content not found: " & Chr(10)
+			For i=2 to UBound(Cmd_Arr)
+				If InStr(1,fileData, Cmd_Arr(i))>0 Then
+					ContentFound = ContentFound & Cmd_Arr(i) & Chr(10)
+				Else
+					ContentNotFound=ContentNotFound & Cmd_Arr(i) & Chr(10)
+					bFound=False
+				End If
+			Next
+			If Cmd_Arr(1)="PASS" Then
+				If bFound Then
+					Reporter.ReportEvent micPass, "Ngrep_Search", ContentFound
+				Else
+					Reporter.ReportEvent micFail, "Ngrep_Search", ContentNotFound
+				End If
+			ElseIf Cmd_Arr(1)="FAIL" Then
+				If bFound Then
+					Reporter.ReportEvent micFail, "Ngrep_Search(FAIL)", ContentFound
+				Else
+					Reporter.ReportEvent micPass, "Ngrep_Search(FAIL)", ContentNotFound
+				End If
+			End If
+		Else
+			If Cmd_Arr(1)="PASS" Then
+					Reporter.ReportEvent micFail, "Ngrep_Search", "No content"
+			ElseIf Cmd_Arr(1)="FAIL" Then
+					Reporter.ReportEvent micPass, "Ngrep_Search(FAIL)", "No content"
+			End If
+		End If
+	Else
+		Reporter.ReportEvent micFail, "Ngrep_Search", Cmd_Arr(0) & " file not found"
+	End If
+End Sub
+
+'Cmd_Arr(0)=<File Path>, Cmd_Arr(1~n)=<Search Strimg>
+Function Ngrep_Search_Return(Cmd_Arr)
+	Ngrep_Search_Return=True
+	Set fso = CreateObject("Scripting.FileSystemObject")
+	If  fso.FileExists(Cmd_Arr(0)) Then
+		Set f = fso.GetFile(Cmd_Arr(0))
+		If f.Size>0 Then
+			Set ts = fso.OpenTextFile(Cmd_Arr(0))
+			fileData = ts.ReadAll
+			
+			For i=1 to UBound(Cmd_Arr)
+				If InStr(1,fileData, Cmd_Arr(i))=0 Then
+					Ngrep_Search_Return=False
+				End If
+			Next
+		Else
+			Ngrep_Search_Return=False
+		End If
+	Else
+		Ngrep_Search_Return=False
+	End If
+End Function
+
+'Return how many times the string appear in file
+Function String_Count ( File_Path, Check_String )
+	FileExist=File_Exist(File_Path, "PASS")
+	If FileExist=True Then
+		iParaFound = 0
+		Set fso = CreateObject("Scripting.FileSystemObject")
+		Set rl=fso.OpenTextFile(File_Path)
+		Do Until rl.AtEndOfStream
+			strLine=rl.ReadLine
+			If InStr(1, strLine, Check_String) > 0 Then
+				iParaFound = iParaFound + 1
+			End If
+		Loop
+		rl.Close
+		String_Count=iParaFound
+	Else
+		String_Count=0
+	End If
+End Function
+
+'Search (UPnP) object in network neighbor
+Sub UPnP_Search(Object_Name, PASS_FAIL)
+'	Set objShell = CreateObject("WScript.Shell")
+'	Set objExec = objShell.Exec("explorer.exe ::{208D2C60-3AEA-1069-A2D7-08002B30309D}")
+'	Wait 10
+'	Set fso = CreateObject("Scripting.FileSystemObject")
+'	Set f = fso.OpenTextFile(Environment("Tools_Path") & "\UPnP_Search.vbs", 2, True)
+'	f.Write "Set objShell = CreateObject(""WScript.Shell"")" & Chr(13) & Chr(10)
+'	f.Write "Set objExec = objShell.Exec(""explorer.exe ::{208D2C60-3AEA-1069-A2D7-08002B30309D}"")"
+'	f.Close
+'	SystemUtil.Run "WScript.exe", Environment("Tools_Path") & "\UPnP_Search.vbs", Environment("Tools_Path"),""
+
+	Close_Process "explorer.exe"
+	Wait 3
+	InvokeApplication "explorer.exe ::{208D2C60-3AEA-1069-A2D7-08002B30309D}"
+	Wait 5
+	bFound=False
+	Window("網路上的芳鄰").Activate
+	ListCount=Window("網路上的芳鄰").WinListView("Content").GetItemsCount
+	For i=0 to ListCount-1
+		If Object_Name=Window("網路上的芳鄰").WinListView("Content").GetItem(i)Then
+			bFound=True
+		End If
+	Next
+
+	If bFound Then
+		If PASS_FAIL="PASS" Then
+			Reporter.ReportEvent micPass, "UPnP_Search", " Search " & Object_Name
+		ElseIf PASS_FAIL="FAIL" Then
+			Reporter.ReportEvent micFail, "UPnP_Search(FAIL)", " Search " & Object_Name
+		End If
+	Else
+		If PASS_FAIL="PASS" Then
+			Reporter.ReportEvent micFail, "UPnP_Search", " Search " & Object_Name
+		ElseIf PASS_FAIL="FAIL" Then
+			Reporter.ReportEvent micPass, "UPnP_Search(FAIL)", " Search " & Object_Name
+		End If
+	End If
+
+	Window("網路上的芳鄰").Close
+End Sub
+
+'Search network interface
+Sub Search_Conn(Object_Name)
+'	SystemUtil.Run "ncpa.cpl", "", "C:\WINNT\system32\",""
+'
+'	bFound=False
+'	Window("網路連線").Activate
+'	ListCount=Window("網路連線").WinListView("Content").GetItemsCount
+'	For i=0 to ListCount-1
+'		If Object_Name=Window("網路連線").WinListView("Content").GetItem(i)Then
+'			bFound=True
+'		End If
+'	Next
+	
+	Set objShell = CreateObject("WScript.Shell")
+	Set objScriptExec = objShell.Exec("rasdial " & Connection_Name)
+	
+	strPingResults = objScriptExec.StdOut.ReadAll
+	
+	If Instr(strPingResults,"691") Then
+		Reporter.ReportEvent micPass, "Search_Conn", " Search " & Object_Name
+	ElseIf Instr(strPingResults,"623") Then
+		Reporter.ReportEvent micFail, "Search_Conn", " Search " & Object_Name
+	End If
+	
+'	If bFound Then
+'		Reporter.ReportEvent micPass, "Search_Conn", " Search " & Object_Name
+'	Else
+'		Reporter.ReportEvent micFail, "Search_Conn", " Search " & Object_Name
+'	End If
+'
+	'Window("網路連線").Close
+End Sub
+
+'PPPoE connect
+Sub PPPoE_Connect(Connection_Name, Username, Password)
+'	SystemUtil.Run "ncpa.cpl", "", "C:\WINNT\system32\",""
+'	
+'	Window("網路連線").Activate
+'	Window("網路連線").WinListView("Content").Select Connection_Name
+'	Window("網路連線").WinListView("Content").Type micReturn 
+'	Wait 2
+'	
+'	Dialog("Connect to").Activate
+'	Dialog("Connect to").WinEdit("使用者名稱(U):").Set Username
+'	Dialog("Connect to").WinEdit("密碼(P):").Set Password
+'	Dialog("Connect to").WinButton("連線(C)").Click
+'	
+'	If Dialog("Connect to").Dialog("Connect error").Exist(30) Then
+'		Dialog("Connect to").Dialog("Connect error").WinButton("取消").Click
+'		Reporter.ReportEvent micFail, "PPPoE_Connect", " Connect " & Connection_Name & " failed"
+'	End If
+'
+'	Window("網路連線").Close
+	Set objShell = CreateObject("WScript.Shell")
+	Set objScriptExec = objShell.Exec("rasdial " & Connection_Name & " " & Username & " " & Password)
+End Sub
+
+'PPPoE disconnect
+Sub PPPoE_Disconnect(Connection_Name)
+'	SystemUtil.Run "ncpa.cpl", "", "C:\WINNT\system32\",""
+'	
+'	Window("網路連線").Activate
+'	Window("網路連線").WinListView("Content").Select Connection_Name
+'	Window("網路連線").WinListView("Content").Type micReturn 
+'	If Dialog("Connect to").WinButton("中斷連線(D)").Exist(5) Then
+'		Dialog("Connect to").WinButton("中斷連線(D)").Click
+'	Else
+'		Dialog("Connect to").Close
+'	End If
+'
+'	Wait 2
+'	Window("網路連線").Close
+	Set objShell = CreateObject("WScript.Shell")
+	Set objScriptExec = objShell.Exec("rasdial " & Connection_Name & " /DISCONNECT")
+End Sub
+
+'PPPoE connect fail
+Sub PPPoE_Connect_Fail(Connection_Name, Username, Password)
+'	SystemUtil.Run "ncpa.cpl", "", "C:\WINNT\system32\",""
+'	
+'	Window("網路連線").Activate
+'	Window("網路連線").WinListView("Content").Select Connection_Name
+'	Window("網路連線").WinListView("Content").Type micReturn 
+'	Wait 2
+'	
+'	Dialog("Connect to").Activate
+'	Dialog("Connect to").WinEdit("使用者名稱(U):").Set Username
+'	Dialog("Connect to").WinEdit("密碼(P):").Set Password
+'	Dialog("Connect to").WinButton("連線(C)").Click
+'	
+'	If Dialog("Connect to").Dialog("Connect error").Exist(30) Then
+'		Dialog("Connect to").Dialog("Connect error").WinButton("取消").Click
+'		Reporter.ReportEvent micPass, "PPPoE_Connect", " Connect " & Connection_Name & " failed"
+'	End If
+'
+'	Window("網路連線").Close
+	Set objShell = CreateObject("WScript.Shell")
+	Set objScriptExec = objShell.Exec("rasdial " & Connection_Name & " " & Username & " " & Password)
+	strPingResults = objScriptExec.StdOut.ReadAll
+	if Instr(strPingResults,"錯誤") or Instr(strPingResults,"error") and Instr(strPingResults,"命令已成功完成")<0 then
+		Reporter.ReportEvent micPass, "PPPoE_Connect", " Connect " & Connection_Name & " failed"
+	End if
+	
+End Sub
+
+'Add or Del UPnP rule
+Sub UPnP_Rule(Add_Del, LAN_IP, Start_Port, End_Port, TCP_UDP)
+   Cmd=""
+	If Add_Del="Add" Then
+		Cmd="upnpadd.bat " & LAN_IP & " " & Start_Port & " " & End_Port & " " & TCP_UDP
+	Else
+		Cmd="upnpdel.bat " & Start_Port & " " & End_Port & " " & TCP_UDP
+	End If
+
+	Set fso = CreateObject("Scripting.FileSystemObject")
+	Set f = fso.OpenTextFile (Environment("Tools_Path") & "\UPnP\UPnp_rule.bat", 2, True)
+	f.Write "cd/d "& Environment("Tools_Path") & "\UPnP" & Chr(10)
+	f.Write Cmd
+    f.Close
+
+	SystemUtil.Run "UPnp_rule.bat", "", Environment("Tools_Path") & "\UPnP\",""
+	Wait 3
+End Sub
+
+'Enable a (NIC) device
+Sub NIC_Enable (Device_ID)
+	InvokeApplication Environment("Tools_Path") & "\devcon.exe enable " & Device_ID
+	Wait 5
+End Sub
+
+'Disable a (NIC) device
+Sub NIC_Disable (Device_ID)
+	InvokeApplication Environment("Tools_Path") & "\devcon.exe disable " & Device_ID
+	Wait 5
+End Sub
+
+'Compare file content of 2 files
+Sub File_Compare(FileA, FileB, PASS_FAIL)
+	Set fso = CreateObject("Scripting.FileSystemObject")
+
+	If fso.FileExists(FileA) Then
+		Set fa = fso.OpenTextFile(FileA)
+		ContentA = fa.ReadAll
+		fa.Close
+	Else
+		Reporter.ReportEvent micFail, "File_Compare", FileA & " not exists"
+	End If
+
+	If fso.FileExists(FileB) Then
+		Set fb = fso.OpenTextFile(FileB)
+		ContentB = fb.ReadAll
+		fb.Close
+	Else
+		Reporter.ReportEvent micFail, "File_Compare", FileB & " not exists"
+	End If
+
+	If PASS_FAIL = "A in B" Then
+		If InStr(1, ContentB, ContentA)>0 Then
+			Reporter.ReportEvent micPass, "File_Compare", "Found " & FileA & " all contents in " & FileB
+		Else
+			Reporter.ReportEvent micFail, "File_Compare", "Not found " & FileA & " all contents in " & FileB
+		End If
+	Else
+		If fso.FileExists(FileA) And fso.FileExists(FileB) Then
+			If StrComp(ContentA, ContentB, 1) = 0 Then
+				If PASS_FAIL = "PASS" Then
+					Reporter.ReportEvent micPass, "File_Compare", FileA & " is equals to " & FileB
+				ElseIf PASS_FAIL = "FAIL" Then
+					Reporter.ReportEvent micFail, "File_Compare(FAIL)", FileA & " is equals to " & FileB
+				End If
+			Else
+				If PASS_FAIL = "PASS" Then
+					Reporter.ReportEvent micFail, "File_Compare", FileA & " is not equals to " & FileB
+				ElseIf PASS_FAIL = "FAIL" Then
+					Reporter.ReportEvent micPass, "File_Compare(FAIL)", FileA & " is not equals to " & FileB
+				End If
+			End If
+		End If
+	End If
+End Sub
+
+'Create or modifies a text file with specific content
+Sub File_WriteText (FileName, FileContent)
+	On Error Resume Next
+	Set fso = CreateObject("Scripting.FileSystemObject")
+	Set wFile = fso.CreateTextFile(FileName, True)
+	wFile.Write FileContent
+	wFile.Close
+	Set wFile = Nothing	
+	Set fso = Nothing	
+End Sub
+
+'Delete a file
+Sub File_Delete (FileName)
+	On Error Resume Next
+
+	Set fso = CreateObject("Scripting.FileSystemObject")
+
+	'Delete file if it exists
+	If fso.FileExists(FileName) Then
+		Set rf = fso.GetFile(FileName)
+		rf.Delete
+	End If
+
+	Set fso = Nothing
+End Sub
+
+'Check if file exist. Return true when file exists.
+Function File_Exist (FileName, PASS_FAIL)
+	Set fso = CreateObject("Scripting.FileSystemObject")
+
+	If fso.FileExists(FIleName) Then
+		File_Exist = True
+		If PASS_FAIL = "PASS" Then
+			Reporter.ReportEvent micPass, "File_Exist", "File " & FIleName & " exists"
+		ElseIf PASS_FAIL = "FAIL" Then
+			Reporter.ReportEvent micFail, "File_Exist(FAIL)", "File " & FIleName & " exists"
+		End If
+	Else
+		File_Exist = False
+		If PASS_FAIL = "PASS" Then
+			Reporter.ReportEvent micFail, "File_Exist", "File " & FIleName & " not exists"
+		ElseIf PASS_FAIL = "FAIL" Then
+			Reporter.ReportEvent micPass, "File_Exist(FAIL)", "File " & FIleName & " not exists"
+		End If	
+	End If
+	Set fso = Nothing
+End Function
+
+'Copy file(files) to destination path
+Sub File_Copy (FileSource, FileDestination)
+   On Error Resume Next
+   Set fso = CreateObject("Scripting.FileSystemObject")
+	fso.CopyFile FileSource, FileDestination
+	Set fso = Nothing
+End Sub
+
+'Login a share folder
+Sub Folder_Login (FolderName, Username, Password)
+	Open_IE FolderName
+	
+	If Dialog("User Authentication").Exist(10) Then
+		Dialog("User Authentication").WinEdit("使用者名稱(U):").Set Username
+		Dialog("User Authentication").WinEdit("密碼(P):").Set Password
+		Dialog("User Authentication").WinButton("確定").Click
+	End If
+End Sub
+
+'Delete a share folder login record
+Sub Folder_Logout (FolderName)
+	Dos_Cmd_Wait Environment("Tools_Path"), "net", "use /delete " & FolderName, 5
+End Sub
+
+'Create a folder
+Sub Folder_Cerate (FolderName)
+	On Error Resume Next
+	Set fso = CreateObject("Scripting.FileSystemObject")
+	fso.CreateFolder FolderName
+	Set fso = Nothing
+End Sub
+
+'Delete a folder
+Sub Folder_Delete (FolderName)
+	On Error Resume Next
+
+	Set fso = CreateObject("Scripting.FileSystemObject")
+
+	'Delete folder if it exists
+	If fso.FolderExists(FolderName) Then
+		fso.DeleteFolder FolderName
+	End If
+
+	Set fso = Nothing
+End Sub
+
+'Check if folder exist. Return true when folder exists.
+Function Folder_Exist (FolderName, PASS_FAIL)
+	Set fso = CreateObject("Scripting.FileSystemObject")
+
+	If fso.FolderExists(FolderName) Then
+		Folder_Exist = True
+		If PASS_FAIL = "PASS" Then
+			Reporter.ReportEvent micPass, "Folder_Exist", "Folder " & FolderName & " exists"
+		ElseIf PASS_FAIL = "FAIL" Then
+			Reporter.ReportEvent micFail, "Folder_Exist(FAIL)", "Folder " & FolderName & " exists"
+		End If
+	Else
+		Folder_Exist = False
+		If PASS_FAIL = "PASS" Then
+			Reporter.ReportEvent micFail, "Folder_Exist", "Folder " & FolderName & " not exists"
+		ElseIf PASS_FAIL = "FAIL" Then
+			Reporter.ReportEvent micPass, "Folder_Exist(FAIL)", "Folder " & FolderName & " not exists"
+		End If	
+	End If
+	Set fso = Nothing
+End Function
+
+'Copy folder to destination path. Include all contents and subfolder
+Sub Folder_Copy (FolderSource, FolderDestination)
+   On Error Resume Next
+   Set fso = CreateObject("Scripting.FileSystemObject")
+	fso.CopyFolder FolderSource, FolderDestination
+	Set fso = Nothing
+End Sub
+
+'Get local or remote PC IP address with WMI
+'(Return IP address)
+Function WMI_IP_Get (TargetHost, NICName)
+	If InStr(1, TargetHost, "/") = 0 Then
+		'Without authentication
+		Set objWMIService = GetObject("winmgmts:\\" & TargetHost & "\root\cimv2")	
+	Else
+		arrHost = Split(TargetHost, "/")	'Host/Username/Password
+
+		'Remote authentication
+		Set objSWbemLocator = CreateObject("WbemScripting.SWbemLocator")
+		Set objWMIService = objSWbemLocator.ConnectServer (arrHost(0), "root\cimv2", arrHost(1), arrHost(2))
+	End If
+
+	'Search MAC address of NIC
+	Set colNetAdapters = objWMIService.ExecQuery _
+		("Select * From Win32_NetworkAdapter " _
+			& "Where NetConnectionID = '" & NICName & "'")	
+	For Each objNetAdapter In colNetAdapters
+		strMACAddress = objNetAdapter.MACAddress
+	Next
+
+	'Get IP address
+	Set colItems = objWMIService.ExecQuery _
+		("Select * From Win32_NetworkAdapterConfiguration")
+	For Each objItem in colItems
+		If objItem.MACAddress = strMACAddress Then
+			For Each strIPAddress in objItem.IPAddress
+				WMI_IP_Get = strIPAddress
+				Exit For
+			Next
+			Exit For
+		End If
+	Next
+End Function
+
+'Set local or remote PC DHCP enable with WMI
+'(Return IP address)
+Function WMI_IP_Set_Dynamic (TargetHost, NICName, GetIP)
+	If InStr(1, TargetHost, "/") = 0 Then
+		'Without authentication
+		Set objWMIService = GetObject("winmgmts:\\" & TargetHost & "\root\cimv2")	
+	Else
+		arrHost = Split(TargetHost, "/")	'Host/Username/Password
+
+		'Remote authentication
+		Set objSWbemLocator = CreateObject("WbemScripting.SWbemLocator")
+		Set objWMIService = objSWbemLocator.ConnectServer (arrHost(0), "root\cimv2", arrHost(1), arrHost(2))
+	End If
+
+	'Search MAC address of NIC	
+	Set colNetAdapters = objWMIService.ExecQuery _
+		("Select * From Win32_NetworkAdapter Where NetConnectionID = '" & NICName & "'")
+	For Each objNetAdapter In colNetAdapters
+		strMACAddress = objNetAdapter.MACAddress
+	Next
+
+	'Enable DHCP
+	Set colItems = objWMIService.ExecQuery _
+		("Select * From Win32_NetworkAdapterConfiguration")
+	For Each objItem in colItems
+		If objItem.MACAddress = strMACAddress Then
+			objItem.EnableDHCP()
+			Exit For
+		End If
+	Next
+
+	If GetIP = True Then
+		'Get dynamic IP address
+		retry = 0
+		Do 
+			Wait 1
+			RemoteIP = WMI_IP_Get(TargetHost, NICName)
+			retry =retry+1
+		Loop Until RemoteIP <> "0.0.0.0" Or retry >= 20
+	
+		If RemoteIP <> "0.0.0.0" Then
+			Reporter.ReportEvent micPass, "Set dynamic IP address", "Enable DHCP. IP address is " & RemoteIP
+		Else
+			'Report FAIL if can't get IP address
+			Reporter.ReportEvent micFail, "Set dynamic IP address", "Enable DHCP. But can't get IP address from DHCP server."
+		End If
+	
+		WMI_IP_Set_Dynamic = RemoteIP
+	End If
+End Function
+
+'Set local or remote PC static IP with WMI
+'(Return IP address)
+Function WMI_IP_Set_Static (TargetHost, NICName, IP_Address, Mask, Gateway, DNS)
+	arrIPAddress = Split(IP_Address, "|")
+	arrSubnetMask = Split(Mask, "|")
+	arrGateway = Split(Gateway, "|")
+	arrGatewayMetric = Array(1)
+	arrDNS = Split(DNS, "|")
+	
+	If InStr(1, TargetHost, "/") = 0 Then
+		'Without authentication
+		Set objWMIService = GetObject("winmgmts:\\" & TargetHost & "\root\cimv2")	
+	Else
+		arrHost = Split(TargetHost, "/")	'Host/Username/Password
+
+		'Remote authentication
+		Set objSWbemLocator = CreateObject("WbemScripting.SWbemLocator")
+		Set objWMIService = objSWbemLocator.ConnectServer (arrHost(0), "root\cimv2", arrHost(1), arrHost(2))
+	End If
+
+	'Search MAC address of NIC	
+	Set colNetAdapters = objWMIService.ExecQuery _
+		("Select * From Win32_NetworkAdapter Where NetConnectionID = '" & NICName & "'")
+	For Each objNetAdapter In colNetAdapters
+		strMACAddress = objNetAdapter.MACAddress
+	Next
+
+	'Set static IP settings
+	Set colItems = objWMIService.ExecQuery _
+		("Select * From Win32_NetworkAdapterConfiguration")
+	For Each objItem in colItems
+		If objItem.MACAddress = strMACAddress Then
+			errEnable = objItem.EnableStatic(arrIPAddress, arrSubnetMask)
+			If Gateway <> "" Then
+				errGateways = objItem.SetGateways(arrGateway, arrGatewaymetric)
+			End If
+			If DNS <> "" Then
+				errDNS = objItem.SetDNSServerSearchOrder(arrDNS)
+			End If
+			Exit For
+		End If
+	Next
+
+	RemoteIP = WMI_IP_Get(TargetHost, NICName)
+	If RemoteIP = arrIPAddress(0) Then
+		Reporter.ReportEvent micPass, "Set static IP address", "Set IP address as " & RemoteIP
+	Else
+		'Report FAIL if can't get IP address
+		Reporter.ReportEvent micFail, "Set static IP address", "Set IP address as " & RemoteIP
+	End If
+
+	WMI_IP_Set_Static = RemoteIP
+End Function
+
+Sub WMI_Process_Exec (TargetHost, ProcessPath)
+	If InStr(1, TargetHost, "/") = 0 Then
+		'Without authentication
+		Set objWMIService = GetObject("winmgmts:\\" & TargetHost & "\root\cimv2")	
+		hostName = "local PC"
+	Else
+		arrHost = Split(TargetHost, "/")	'Host/Username/Password
+
+		'Remote authentication
+		Set objSWbemLocator = CreateObject("WbemScripting.SWbemLocator")
+		Set objWMIService = objSWbemLocator.ConnectServer (arrHost(0), "root\cimv2", arrHost(1), arrHost(2))
+		hostName = arrHost(0)
+	End If
+
+	
+	Set objWMIProcess = objWMIService.Get("Win32_Process")
+
+	errReturn = objWMIProcess.Create (ProcessPath, Null, Null, intProcessID)
+
+	Select Case errReturn
+		Case 0
+			Reporter.ReportEvent micDone, "WMI_Process_Exec", "Execute " & ProcessPath & " at " & hostName & " success."
+		Case 2
+			Reporter.ReportEvent micFail, "WMI_Process_Exec", "Execute " & ProcessPath & " at " & hostName & " failed." & vbCrLf _
+			& "Access denied."
+		Case 3
+			Reporter.ReportEvent micFail, "WMI_Process_Exec", "Execute " & ProcessPath & " at " & hostName & " failed." & vbCrLf _
+			& "Insufficent privilege."
+		Case 8
+			Reporter.ReportEvent micFail, "WMI_Process_Exec", "Execute " & ProcessPath & " at " & hostName & " failed." & vbCrLf _
+			& "Unknown failure."
+		Case 9
+			Reporter.ReportEvent micFail, "WMI_Process_Exec", "Execute " & ProcessPath & " at " & hostName & " failed." & vbCrLf _
+			& "Path not found."
+		Case 21
+			Reporter.ReportEvent micFail, "WMI_Process_Exec", "Execute " & ProcessPath & " at " & hostName & " failed." & vbCrLf _
+			& "Invalid parameter."
+	End Select
+End Sub
+
+
+'Check if DUT time is synchronize with system time
+Sub Time_Check (Check_Time, Time_Zone, PASS_FAIL)
+	Check_TimeA = DateAdd("h", 8 - CInt(Time_Zone), Check_Time)
+	If DateDiff("s", Check_TimeA, Time) < 30 And DateDiff("s", Check_TimeA, Time) > -30 Then
+		If PASS_FAIL = "PASS" Then
+			Reporter.ReportEvent micPass, "Time_Check", "Time to check: " & Check_Time & vbCrlf & "Time zone: " & Time_Zone & vbCrlf & "System time: " & Time
+		ElseIf PASS_FAIL = "FAIL" Then
+			Reporter.ReportEvent micFail, "Time_Check(FAIL)", "Time to check: " & Check_Time & vbCrlf & "Time zone: " & Time_Zone & vbCrlf & "System time: " & Time
+		End If
+	Else
+		If PASS_FAIL = "PASS" Then
+			Reporter.ReportEvent micFail, "Time_Check", "Time to check: " & Check_Time & vbCrlf & "Time zone: " & Time_Zone & vbCrlf & "System time: " & Time
+		Else
+			Reporter.ReportEvent micPass, "Time_Check(FAIL)", "Time to check: " & Check_Time & vbCrlf & "Time zone: " & Time_Zone & vbCrlf & "System time: " & Time 
+		End If
+	End If
+End Sub
+
+Function GetSequenceWeekofMonth(theSequence, theWeek, theMonth)
+	NowDate=Date
+	MyYear=Year(NowDate)
+	startDate=theMonth & " 1, " & MyYear
+	
+	Select Case theWeek
+		Case "Sunday"
+			Week = 1
+		Case "Monday"
+			Week = 2
+		Case "Tuesday"
+			Week = 3
+		Case "Wednesday"
+			Week = 4
+		Case "Thursday"
+			Week = 5
+		Case "Friday"
+			Week = 6
+		Case "Saturday"
+			Week = 7
+	End Select
+
+	Do While Weekday(startDate) <> Week   
+		startDate = DateAdd("d", 1, startDate)
+	Loop
+	
+	Select Case TheSequence
+	Case "First"
+		x =0
+	Case "Second"
+		x =1
+	Case "Third"
+		x =2
+	Case "Fourth"
+		x =3
+	Case "Last"
+		x =4
+	End Select
+
+	a= 7 * x
+	NewDate = DateAdd("d", a, startDate)
+	GetSequenceWeekofMonth = NewDate
+End Function 
+
+
+'Check NIC connect speed
+Sub NIC_Speed_Check(NIC_Name, Expect_Speed)
+	SystemUtil.Run "ncpa.cpl", "", "C:\WINNT\system32\",""
+	
+	Window("網路連線").Activate
+	If Instr(GetOS,"XP") Then
+		Window("網路連線").WinListView("Content").Select NIC_Name
+		Window("網路連線").WinListView("Content").Type micLAltDwn & "f" & micAltUp 
+		Wait 1
+		Window("網路連線").WinListView("Content").Type "u"
+		
+		If Dialog("NIC status").Exist(5) Then
+			NIC_Speed = Dialog("NIC status").Static("Speed").GetROProperty("text")
+			Dialog("NIC status").Close
+			Window("網路連線").Close
+		End if
+	else
+		Window("網路連線").WinObject("Nic Object").WinList("Content").Select NIC_Name
+
+		Window("網路連線").WinObject("Nic Object").WinList("Content").Type micLAltDwn & "f" & micAltUp 
+		Wait 1
+		Window("網路連線").WinObject("Nic Object").WinList("Content").Type "u"
+		If Dialog("NIC status").Exist(5) Then
+			NIC_Speed = Dialog("NIC status 7").Static("Speed").GetROProperty("text")
+			Dialog("NIC status 7").Close
+			Window("網路連線").Close
+		End If
+	End If
+	
+	If Dialog("NIC status").Exist(5) Then
+		arrSpeed=Split(NIC_Speed, " ")
+
+		If InStr(1, Expect_Speed, ">=") = 1 Then
+			If Clng(arrSpeed(0)) >= Clng(Mid(Expect_Speed, 3)) Then
+				Reporter.ReportEvent micPass, "NIC_Speed_Check: " & NIC_Name, arrSpeed(0) & Expect_Speed
+			Else
+				Reporter.ReportEvent micFail, "NIC_Speed_Check: " & NIC_Name, arrSpeed(0) & " not " & Expect_Speed
+			End If
+		ElseIf InStr(1, Expect_Speed, "<=") = 1 Then
+			If Clng(arrSpeed(0)) <= Clng(Mid(Expect_Speed, 3)) Then
+				Reporter.ReportEvent micPass, "NIC_Speed_Check: " & NIC_Name, arrSpeed(0) & Expect_Speed
+			Else
+				Reporter.ReportEvent micFail, "NIC_Speed_Check: " & NIC_Name, arrSpeed(0) & " not " & Expect_Speed
+			End If
+		ElseIf InStr(1, Expect_Speed, "<>") = 1 Then
+			If Clng(arrSpeed(0)) <> Clng(Mid(Expect_Speed, 3)) Then
+				Reporter.ReportEvent micPass, "NIC_Speed_Check: " & NIC_Name, arrSpeed(0) & Expect_Speed
+			Else
+				Reporter.ReportEvent micFail, "NIC_Speed_Check: " & NIC_Name, arrSpeed(0) & " not " & Expect_Speed
+			End If
+		ElseIf InStr(1, Expect_Speed, ">") = 1 Then
+			If Clng(arrSpeed(0)) > Clng(Mid(Expect_Speed, 2)) Then
+				Reporter.ReportEvent micPass, "NIC_Speed_Check: " & NIC_Name, arrSpeed(0) & Expect_Speed
+			Else
+				Reporter.ReportEvent micFail, "NIC_Speed_Check: " & NIC_Name, arrSpeed(0) & " is not " & Expect_Speed
+			End If
+		ElseIf InStr(1, Expect_Speed, "<") = 1 Then
+			If Clng(arrSpeed(0)) < Clng(Mid(Expect_Speed, 2)) Then
+				Reporter.ReportEvent micPass, "NIC_Speed_Check: " & NIC_Name, arrSpeed(0) & Expect_Speed
+			Else
+				Reporter.ReportEvent micFail, "NIC_Speed_Check: " & NIC_Name, arrSpeed(0) & " is not " & Expect_Speed
+			End If
+		ElseIf InStr(1, Expect_Speed, "~") > 0 Then
+			If Clng(arrSpeed(0)) >= Clng(Mid(Expect_Speed, 1, InStr(1, Expect_Speed, "~") - 1)) And Clng(arrSpeed(0)) <= Clng(Mid(Expect_Speed, InStr(1, Expect_Speed, "~") + 1)) Then
+				Reporter.ReportEvent micPass, "NIC_Speed_Check: " & NIC_Name, arrSpeed(0) & " is between " & Expect_Speed
+			Else
+				Reporter.ReportEvent micFail, "NIC_Speed_Check: " & NIC_Name, arrSpeed(0) & " is not  between " & Expect_Speed
+			End If
+		Else
+			If Clng(arrSpeed(0)) = Clng(Expect_Speed) Then
+				Reporter.ReportEvent micPass, "NIC_Speed_Check: " & NIC_Name, arrSpeed(0) & "=" & Expect_Speed
+			Else
+				Reporter.ReportEvent micFail, "NIC_Speed_Check: " & NIC_Name, arrSpeed(0) & " is not =" & Expect_Speed
+			End If
+		End If
+	Else
+		Reporter.ReportEvent micFail, "NIC_Speed_Check", NIC_Name & " is not connected"
+	End If
+End Sub
+
+'Chang NIC configurations
+Sub NIC_Config_Change (TargetHost, Device_Name, Config_Value)
+	const HKEY_LOCAL_MACHINE = 2147483650
+
+	Para_Name = Mid(Config_Value, 1, InStr(1, Config_Value, "=")-1)
+	Para_Value = Mid(Config_Value, InStr(1, Config_Value, "=")+1)
+
+	If InStr(1, TargetHost, "/") = 0 Then
+		'Without authentication
+		Set objWMIService = GetObject("winmgmts:\\" & TargetHost & "\root\cimv2")
+		Set objReg=GetObject("winmgmts:{impersonationLevel=impersonate}!\\" & TargetHost & "\root\default:StdRegProv")			
+	Else
+		arrHost = Split(TargetHost, "/")	'Host/Username/Password
+
+		'Remote authentication
+		Set objSWbemLocator = CreateObject("WbemScripting.SWbemLocator")
+		Set objSWbemServices = objSWbemLocator.ConnectServer(arrHost(0), "root\default", arrHost(1), arrHost(2))
+		objSWbemServices.Security_.ImpersonationLevel = 3
+
+		Set objReg = objSWbemServices.Get("StdRegProv")
+	End If
+
+	'Get NIC classes
+	strKeyPathNIC = "SYSTEM\CurrentControlSet\Control\Class\{4d36e972-e325-11ce-bfc1-08002be10318}"
+	Return=objReg.EnumKey(HKEY_LOCAL_MACHINE, strKeyPathNIC, arrNICSubKeys)
+	
+	For Each NICSubkey in arrNICSubKeys
+		'Search device name in NICs
+		objReg.GetExpandedStringValue HKEY_LOCAL_MACHINE,strKeyPathNIC & "\" & NICSubKey,"DriverDesc",strDevice
+		If strDevice = Device_Name Then
+			'Search parameters
+			paraFolder = "\Ndi\Params"
+			objReg.EnumKey HKEY_LOCAL_MACHINE, strKeyPathNIC & "\" & NICSubKey & paraFolder, arrParaSubKeys
+			If Not IsArray(arrParaSubKeys) Then
+				paraFolder = "\Ndi\savedParams"
+				objReg.EnumKey HKEY_LOCAL_MACHINE, strKeyPathNIC & "\" & NICSubKey & paraFolder, arrParaSubKeys
+			End If
+			For Each ParaSubkey in arrParaSubKeys
+				'Search parameter name in parameter descriptions
+				objReg.GetExpandedStringValue HKEY_LOCAL_MACHINE,strKeyPathNIC & "\" & NICSubKey & paraFolder & "\" & ParaSubkey,"ParamDesc",strPara
+				If strPara = Para_Name Then
+					'Get parameter values
+					objReg.EnumValues HKEY_LOCAL_MACHINE, strKeyPathNIC & "\" & NICSubKey & paraFolder & "\"  & ParaSubkey & "\enum",arrValueNames, arrValueTypes
+					For Each ValueName in arrValueNames
+						'Get parameter descriptions for each values
+						objReg.GetExpandedStringValue HKEY_LOCAL_MACHINE,strKeyPathNIC & "\" & NICSubKey & paraFolder & "\"  & ParaSubkey & "\enum",ValueName,strValue
+						If strValue = Para_Value Then					
+							'Set value for this parameter
+							Return = objReg.SetStringValue(HKEY_LOCAL_MACHINE, strKeyPathNIC & "\" & NICSubKey, ParaSubkey, ValueName)
+							If (Return = 0) And (Err.Number = 0) Then
+								Reporter.ReportEvent micPass, "NIC_Config_Change", "Set " & Device_Name & ": " & Config_Value
+							Else
+								Reporter.ReportEvent micFail, "NIC_Config_Change", "Set " & Device_Name & ": " & Config_Value
+							End If
+						End If
+					Next
+				End If
+			Next
+		End If
+	Next
+End Sub
+
+'Check NIC configurations
+Sub NIC_Config_Check (TargetHost, Device_Name, Config_Value)
+	const HKEY_LOCAL_MACHINE = 2147483650
+
+	Para_Name = Mid(Config_Value, 1, InStr(1, Config_Value, "=")-1)
+	Para_Value = Mid(Config_Value, InStr(1, Config_Value, "=")+1)
+
+	If InStr(1, TargetHost, "/") = 0 Then
+		'Without authentication
+		Set objWMIService = GetObject("winmgmts:\\" & TargetHost & "\root\cimv2")
+		Set objReg=GetObject("winmgmts:{impersonationLevel=impersonate}!\\" & TargetHost & "\root\default:StdRegProv")			
+	Else
+		arrHost = Split(TargetHost, "/")	'Host/Username/Password
+
+		'Remote authentication
+		Set objSWbemLocator = CreateObject("WbemScripting.SWbemLocator")
+		Set objSWbemServices = objSWbemLocator.ConnectServer(arrHost(0), "root\default", arrHost(1), arrHost(2))
+		objSWbemServices.Security_.ImpersonationLevel = 3
+
+		Set objReg = objSWbemServices.Get("StdRegProv")
+	End If
+
+	'Get NIC classes
+	strKeyPathNIC = "SYSTEM\CurrentControlSet\Control\Class\{4d36e972-e325-11ce-bfc1-08002be10318}"
+	objReg.EnumKey HKEY_LOCAL_MACHINE, strKeyPathNIC, arrNICSubKeys
+	
+	For Each NICSubkey in arrNICSubKeys
+		'Search device name in NICs
+		objReg.GetExpandedStringValue HKEY_LOCAL_MACHINE,strKeyPathNIC & "\" & NICSubKey,"DriverDesc",strDevice
+		If strDevice = Device_Name Then
+			'Search parameters
+			paraFolder = "\Ndi\Params"
+			objReg.EnumKey HKEY_LOCAL_MACHINE, strKeyPathNIC & "\" & NICSubKey & paraFolder, arrParaSubKeys
+			If Not IsArray(arrParaSubKeys) Then
+				paraFolder = "\Ndi\savedParams"
+				objReg.EnumKey HKEY_LOCAL_MACHINE, strKeyPathNIC & "\" & NICSubKey & paraFolder, arrParaSubKeys
+			End If
+			For Each ParaSubkey in arrParaSubKeys
+				'Search parameter name in parameter descriptions
+				objReg.GetExpandedStringValue HKEY_LOCAL_MACHINE,strKeyPathNIC & "\" & NICSubKey & paraFolder & "\" & ParaSubkey,"ParamDesc",strPara
+				If strPara = Para_Name Then					
+					'Get parameter values
+					objReg.EnumValues HKEY_LOCAL_MACHINE, strKeyPathNIC & "\" & NICSubKey & paraFolder & "\"& ParaSubkey & "\enum",arrValueNames, arrValueTypes
+					For Each ValueName in arrValueNames
+						'Get parameter descriptions for each values
+						objReg.GetExpandedStringValue HKEY_LOCAL_MACHINE,strKeyPathNIC & "\" & NICSubKey & paraFolder & "\" & ParaSubkey & "\enum",ValueName,strValue
+						If strValue = Para_Value Then					
+							'Get value for this parameter
+							objReg.GetExpandedStringValue HKEY_LOCAL_MACHINE,strKeyPathNIC & "\" & NICSubKey,ParaSubkey, getValue
+							If getValue=ValueName Then
+								Reporter.ReportEvent micPass, "NIC_Config_Check", Para_Name & " of " & Device_Name & " is " & Para_Value
+							Else
+								Reporter.ReportEvent micFail, "NIC_Config_Check", Para_Name & " of " & Device_Name & " is not " & Para_Value
+							End If
+						End If
+					Next
+				End If
+			Next
+		End If
+	Next
+End Sub
+
+'Set registry code in local/remote PC with WMI
+Sub WMI_Set_Registry(TargetHost, KeyPath, KeyName, SetValue)
+	const HKEY_LOCAL_MACHINE = 2147483650
+
+	If InStr(1, TargetHost, "/") = 0 Then
+		'Without authentication
+		Set objWMIService = GetObject("winmgmts:\\" & TargetHost & "\root\cimv2")
+		Set objReg=GetObject("winmgmts:{impersonationLevel=impersonate}!\\" & TargetHost & "\root\default:StdRegProv")			
+	Else
+		arrHost = Split(TargetHost, "/")	'Host/Username/Password
+
+		'Remote authentication
+		Set objSWbemLocator = CreateObject("WbemScripting.SWbemLocator")
+		Set objSWbemServices = objSWbemLocator.ConnectServer(arrHost(0), "root\default", arrHost(1), arrHost(2))
+		objSWbemServices.Security_.ImpersonationLevel = 3
+
+		Set objReg = objSWbemServices.Get("StdRegProv")
+	End If
+	
+	' write string value to key    
+	Return = objReg.SetStringValue(HKEY_LOCAL_MACHINE,KeyPath,KeyName,SetValue)
+	If (Return = 0) And (Err.Number = 0) Then
+		Reporter.ReportEvent micPass, "WMI_Set_Registry", "Set registry key value at " & TargetHost
+	Else
+		Reporter.ReportEvent micFail, "WMI_Set_Registry", "Set registry key value at " & TargetHost
+	End If
+End Sub
+
+'Get registry code in local/remote PC with WMI
+Function WMI_Get_Registry(TargetHost, KeyPath, KeyName)
+	const HKEY_LOCAL_MACHINE = 2147483650
+
+	If InStr(1, TargetHost, "/") = 0 Then
+		'Without authentication
+		Set objWMIService = GetObject("winmgmts:\\" & TargetHost & "\root\cimv2")
+		Set objReg=GetObject("winmgmts:{impersonationLevel=impersonate}!\\" & TargetHost & "\root\default:StdRegProv")			
+	Else
+		arrHost = Split(TargetHost, "/")	'Host/Username/Password
+
+		'Remote authentication
+		Set objSWbemLocator = CreateObject("WbemScripting.SWbemLocator")
+		Set objSWbemServices = objSWbemLocator.ConnectServer(arrHost(0), "root\default", arrHost(1), arrHost(2))
+		objSWbemServices.Security_.ImpersonationLevel = 3
+
+		Set objReg = objSWbemServices.Get("StdRegProv")
+	End If
+	
+	
+	objReg.GetExpandedStringValue HKEY_LOCAL_MACHINE,KeyPath,KeyName,GetValue
+	WMI_Get_Registry = GetValue
+End Function
+
+Function Transfer_Weekday()
+	MyDate=Date
+	MyWeek=Weekday(MyDate)
+	Select Case MyWeek
+		Case 1
+			Transfer_Weekday = "Sunday"
+		Case 2
+			Transfer_Weekday = "Monday"
+		Case 3
+			Transfer_Weekday = "Tueday"
+		Case 4
+			Transfer_Weekday = "Wedday"
+		Case 5
+			Transfer_Weekday = "Thursday"
+		Case 6
+			Transfer_Weekday = "Friday"
+		Case 7
+			Transfer_Weekday = "Saturday"
+	End Select
+End Function
+
+
+
+
+
+'=================Application functions======================
+
+'SCP/FTP/SFTP login test with WinSCP.
+Sub WinSCP(Protocol, IP_Address, Port, Username, Password, File_Name, PASS_FAIL)
+ 	InvokeApplication Environment("Tools_Path") & "\WinScp\winscp419.exe"
+
+	Window("WinSCP Login").Activate
+
+	If Protocol<>"SFTP" Then
+		Window("WinSCP Login").WinObject("Protocol").Click
+		Window("WinSCP Login").WinObject("Protocol").Type Protocol & micReturn
+	End If
+
+	Window("WinSCP Login").WinObject("Host name").Type IP_Address
+
+	If Port<>"" Then
+		Window("WinSCP Login").WinObject("Port").Type Port
+	End If
+
+	Window("WinSCP Login").WinObject("User name").Type Username
+	Window("WinSCP Login").WinObject("Password").Type Password
+	Window("WinSCP Login").WinObject("Login").Click
+
+	If Window("WinSCP User Confirm").WinObject("OK").Exist(5) Then
+		Window("WinSCP User Confirm").WinObject("OK").Click
+	End If
+
+	If Window("WinSCP Connect").Window("Warning").Exist(15) Then
+		Window("WinSCP Connect").Window("Warning").WinObject("Yes").Click
+	End If
+	If Window("WinSCP Error").Exist(15) Then
+		Window("WinSCP Error").WinObject("OK").Click
+	End If
+	If Window("WinSCP Error").Exist(15) Then
+		Window("WinSCP Error").WinObject("OK").Click
+	End If
+
+	If Window("WinSCP").Exist(30) Then
+		'Create AutoMate task for check file item
+		Set fso = CreateObject("Scripting.FileSystemObject")
+		Set f = fso.OpenTextFile (Environment("Tools_Path") & "\WinScp\WinSCP_Check.aml", 2, True)
+		f.Write "<AMMANAGEDTASKFILE>" & Chr(13) & Chr(10)
+		f.Write "<TASK>" & Chr(13) & Chr(10)
+		f.Write "<TRIGGERS>" & Chr(13) & Chr(10)
+		f.Write "</TRIGGERS>" & Chr(13) & Chr(10)
+		f.Write "</TASK>" & Chr(13) & Chr(10)
+		f.Write "<AM5TASK>" & Chr(13) & Chr(10)
+		f.Write "<AMTASKHEAD>" & Chr(13) & Chr(10)
+		f.Write " <TASKINFO TASKVERSION=""6100"">" & Chr(13) & Chr(10)
+		f.Write "<\AMTASKHEAD>" & Chr(13) & Chr(10)
+		f.Write "<STEPS>" & Chr(13) & Chr(10)
+		f.Write "<AMMOUSEMOVEOBJECT WINDOWCLASS=""TScpCommanderForm"" OBJECTNAME=""" & "mnt" & """ OBJECTCLASS=""TUnixDirView"" OBJECTTYPE=""ListItem"" CHECKOBJECTNAME=""YES"" CHECKOBJECTCLASS=""YES"" CHECKOBJECTTYPE=""YES"" AM_FAILACTION=""4"" AM_GOTOLABEL=""End"">" & Chr(13) & Chr(10)
+		f.Write "<AMMESSAGEBOX WINDOWTITLE=""WinSCP Check"">PASS</AMMESSAGEBOX>" & Chr(13) & Chr(10)
+		f.Write "<AMLABEL LABELNAME=""End"">" & Chr(13) & Chr(10)
+		f.Write "<\STEPS>" & Chr(13) & Chr(10)
+		f.Write "</AM5TASK>" & Chr(13) & Chr(10)
+		f.Write "<STEPS>" & Chr(13) & Chr(10)
+		f.Write "</AMMANAGEDTASKFILE>" & Chr(13) & Chr(10)
+		f.Close
+		
+		If InStr(1,CStr(Environment("OS")),"XP")>0 Then
+			SystemUtil.Run "AMTask.exe", Environment("Tools_Path") & "\WinScp\WinSCP_Check.aml", "C:\Program Files\AutoMate 6\",""
+		Else
+			SystemUtil.Run "AMTask.exe", Environment("Tools_Path") & "\WinScp\WinSCP_Check.aml", "C:\Program Files (x86)\AutoMate 6\",""
+		End If
+		
+		If Window("WinSCP Check").Exist(10) Then
+			Window("WinSCP Check").WinObject("OK").Click
+		End If
+
+		bmpName="WinSCP" & Environment("PicNum") & ".bmp"
+		Environment("PicNum")=Environment("PicNum")+1
+		Window("WinSCP").CaptureBitmap bmpName
+	
+		'Close WinSCP
+		Window("WinSCP").Close
+		If Window("WinSCP").Window("Confirm").Exist(5) Then
+			Window("WinSCP").Window("Confirm").WinObject("OK").Click
+			If PASS_FAIL="PASS" Then
+				Reporter.ReportEvent micPass, "WinSCP", Protocol & " test, connect to " &  IP_Address, bmpName
+			ElseIf PASS_FAIL="FAIL" Then
+				Reporter.ReportEvent micFail, "WinSCP(FAIL)", Protocol & " test, connect to " &  IP_Address, bmpName
+			End If
+		End If
+
+	'Connect fail
+	Else
+		If PASS_FAIL="PASS" Then
+			Reporter.ReportEvent micFail, "WinSCP", Protocol & " test, connect to " &  IP_Address
+		ElseIf PASS_FAIL="FAIL" Then
+			Reporter.ReportEvent micPass, "WinSCP(FAIL)", Protocol & " test, connect to " &  IP_Address
+		End If	
+	End If
+
+	Close_Process "winscp419.exe"
+End Sub
+
+Sub WinSCP_Copy(Protocol, IP_Address, Port, Username, Password, Backup_Restore, RemoteFile, LocalFile)
+ 	InvokeApplication Environment("Tools_Path") & "\WinScp\winscp419.exe"
+	Window("WinSCP Login").Activate
+
+	If Protocol<>"SFTP" Then
+		Window("WinSCP Login").WinObject("Protocol").Click
+		Window("WinSCP Login").WinObject("Protocol").Type Protocol & micReturn
+	End If
+	Window("WinSCP Login").WinObject("Host name").Type IP_Address
+	If Port<>"" Then
+		Window("WinSCP Login").WinObject("Port").Type Port
+	End If
+	Window("WinSCP Login").WinObject("User name").Type Username
+	Window("WinSCP Login").WinObject("Password").Type Password
+	Window("WinSCP Login").WinObject("Login").Click
+
+	If Window("WinSCP User Confirm").WinObject("OK").Exist(5) Then
+		Window("WinSCP User Confirm").WinObject("OK").Click
+	End If
+	If Window("WinSCP Connect").Window("Warning").Exist(5) Then
+		Window("WinSCP Connect").Window("Warning").WinObject("Yes").Click
+	End If
+	If Window("WinSCP Error").Exist(5) Then
+		Window("WinSCP Error").WinObject("OK").Click
+	End If
+	If Window("WinSCP Error").Exist(5) Then
+		Window("WinSCP Error").WinObject("OK").Click
+	End If
+
+	If Backup_Restore="Backup" Then
+		If Window("WinSCP").Exist(30) Then
+			l = -1
+			t = -1
+			r = -1
+			b = -1
+			result = Window("WinSCP").WinObject("Remote").GetTextLocation(RemoteFile, l, t, r, b)
+			If result Then
+				x = (l+r) / 2 
+				y = (t+b) / 2 
+				Window("WinSCP").WinObject("Remote").Click x, y
+				Window("WinSCP").WinObject("Remote").Type micF5
+				Window("WinSCP Copy").WinEdit("Copy Path").Set LocalFile
+				Window("WinSCP Copy").WinObject("Copy").Click
+				Wait 3
+			End If
+		End If
+	Close_Process "winscp419.exe"
+	Else
+		If Window("WinSCP").Exist(30) Then
+			TheFile=Split(LocalFile, "\")
+			For x = 0 to Ubound(TheFile)-1
+				File_Path=File_Path+TheFile(x)+"\"
+			Next
+			Target=TheFile(Ubound(TheFile))
+			Window("WinSCP").WinObject("Local path").Click 180, 5
+			Wait 3
+			Window("WinSCP Open").WinEdit("Directory").Set File_Path
+			Window("WinSCP Open").WinObject("OK").Click
+			l = -1
+			t = -1
+			r = -1
+			b = -1
+			result = Window("WinSCP").WinObject("Local").GetTextLocation(Target, l, t, r, b)
+			If result Then
+				x = (l+r) / 2 
+				y = (t+b) / 2 
+				Window("WinSCP").WinObject("Local").Click x, y
+				Window("WinSCP").WinObject("Local").Type micF5
+				Window("WinSCP Copy").WinEdit("Copy Path").Set "/root/"+RemoteFile
+				Window("WinSCP Copy").WinObject("Copy").Click
+				Wait 10
+				Close_Process "winscp419.exe"
+			End If
+		End If
+	End If
+End Sub
+
+'Telnet login test with Putty
+Sub Putty_Telnet(IP_Addr_Port, Username, Password, Exit_Cmd, PASS_FAIL)
+	InvokeApplication Environment("Tools_Path") & "\putty.exe"
+	Wait 5
+
+	TelnetPort =""
+	If InStr(1,IP_Addr_Port,":") Then
+		TelnetIP = Mid(IP_Addr_Port,1,InStr(1,IP_Addr_Port,":")-1)
+		TelnetPort = Mid(IP_Addr_Port,InStr(1,IP_Addr_Port,":")+1)
+	Else
+		TelnetIP = IP_Addr_Port
+	End If
+	
+	Window("PuTTY Configuration").Activate
+	Window("PuTTY Configuration").WinEdit("Host Name (or IP address)").Set TelnetIP
+	Window("PuTTY Configuration").WinRadioButton("Telnet").Click
+	If TelnetPort<>"" Then
+		Window("PuTTY Configuration").WinEdit("Port").Set ""
+		Window("PuTTY Configuration").WinEdit("Port").Set TelnetPort
+	End If
+	Window("PuTTY Configuration").WinButton("Open").Click
+
+	'Press Yes if PuTTY Security Alert dialog exists
+	If Window("PuTTY").Dialog("PuTTY Security Alert").Exist(10) Then
+		Window("PuTTY").Dialog("PuTTY Security Alert").WinButton("是(Y)").Click
+	End If
+
+	'Wait for error window
+	If Window("PuTTY").Dialog("PuTTY Fatal Error").Exist(20) Then
+		Window("PuTTY").Dialog("PuTTY Fatal Error").WinButton("確定").Click
+		Window("PuTTY").Close
+
+		If PASS_FAIL="PASS" Then
+			Reporter.ReportEvent micFail, "Putty_Telnet", "Connect to " & IP_Addr_Port
+		ElseIf PASS_FAIL="FAIL" Then
+			Reporter.ReportEvent micPass, "Putty_Telnet(FAIL)", "Connect to " & IP_Addr_Port
+		End If
+	Else
+		Window("PuTTY").Activate
+		Window("PuTTY").Type Username & micReturn
+		Wait 5
+
+		If Window("PuTTY").Exist(1) Then
+			Window("PuTTY").Type Password & micReturn
+			Wait 3		
+	
+			bmpName="Putty_Telnet" & Environment("PicNum") & ".bmp"
+			Environment("PicNum")=Environment("PicNum")+1
+			Window("PuTTY").CaptureBitmap bmpName
+			Window("PuTTY").Type Exit_Cmd & micReturn
+			Wait 3
+	
+			'Exit failed
+			If Window("PuTTY").Exist(1) Then
+				If PASS_FAIL="PASS" Then
+					Reporter.ReportEvent micFail, "Putty_Telnet", "Connect to " & IP_Addr_Port, bmpName
+				ElseIf PASS_FAIL="FAIL" Then
+					Reporter.ReportEvent micPass, "Putty_Telnet(FAIL)", "Connect to " & IP_Addr_Port, bmpName
+				End If
+	
+				'Close window
+				Window("PuTTY").Close
+				If Window("PuTTY").Dialog("PuTTY Exit Confirmation").Exist(2) Then
+					Window("PuTTY").Dialog("PuTTY Exit Confirmation").Activate
+					Window("PuTTY").Dialog("PuTTY Exit Confirmation").WinButton("確定").Click
+				End If
+			Else
+				If PASS_FAIL="PASS" Then
+					Reporter.ReportEvent micPass, "Putty_Telnet", "Connect to " & IP_Addr_Port, bmpName
+				ElseIf PASS_FAIL="FAIL" Then
+					Reporter.ReportEvent micFail, "Putty_Telnet(FAIL)", "Connect to " & IP_Addr_Port, bmpName
+				End If
+			End If
+
+		'Disconnect
+		Else
+			If PASS_FAIL="PASS" Then
+				Reporter.ReportEvent micFail, "Putty_Telnet", "Connect to " & IP_Addr_Port				
+			ElseIf PASS_FAIL="FAIL" Then
+				Reporter.ReportEvent micPass, "Putty_Telnet(FAIL)", "Connect to " & IP_Addr_Port
+			End If			
+		End If
+	End If
+End Sub
+
+'SSH login test with Putty
+Sub Putty_SSH(IP_Addr_Port, Username, Password, Exit_Cmd, Protocol_Version, PASS_FAIL)
+	InvokeApplication Environment("Tools_Path") & "\putty.exe"
+	Wait 5
+
+	SSHPort =""
+	If InStr(1,IP_Addr_Port,":") Then
+		SSHIP = Mid(IP_Addr_Port,1,InStr(1,IP_Addr_Port,":")-1)
+		SSHPort = Mid(IP_Addr_Port,InStr(1,IP_Addr_Port,":")+1)
+	Else
+		SSHIP = IP_Addr_Port
+	End If
+	
+	Window("PuTTY Configuration").Activate
+	Window("PuTTY Configuration").WinEdit("Host Name (or IP address)").Set SSHIP
+	Window("PuTTY Configuration").WinRadioButton("SSH").Click
+	If SSHPort<>"" Then
+		Window("PuTTY Configuration").WinEdit("Port").Set ""
+		Window("PuTTY Configuration").WinEdit("Port").Set SSHPort
+	End If
+
+	If Protocol_Version<>"" Then
+		Window("PuTTY Configuration").WinTreeView("Category:").Select "Connection;SSH"
+		Wait 1
+		Select Case Protocol_Version
+			Case "1"
+				Window("PuTTY Configuration").WinRadioButton("Version:1").Click
+			Case "1 only"
+				Window("PuTTY Configuration").WinRadioButton("Version:1 only").Click
+			Case "2"
+				Window("PuTTY Configuration").WinRadioButton("Version:2").Click
+			Case "2 only"
+				Window("PuTTY Configuration").WinRadioButton("Version:2 only").Click
+		End Select
+		Wait 1
+		Window("PuTTY Configuration").WinTreeView("Category:").Select "Session"	
+	End If
+	Wait 1
+	Window("PuTTY Configuration").WinButton("Open").Click
+
+	'Press Yes if PuTTY Security Alert dialog exists
+	If Window("PuTTY").Dialog("PuTTY Security Alert").Exist(10) Then
+		Window("PuTTY").Dialog("PuTTY Security Alert").WinButton("是(Y)").Click
+	End If
+	
+	'Wait for error window
+	If Window("PuTTY").Dialog("PuTTY Fatal Error").Exist(20) Then
+		Window("PuTTY").Dialog("PuTTY Fatal Error").WinButton("確定").Click
+		Window("PuTTY").Close
+
+		If PASS_FAIL="PASS" Then
+			Reporter.ReportEvent micFail, "Putty_SSH", "Connect to " & IP_Addr_Port
+		ElseIf PASS_FAIL="FAIL" Then
+			Reporter.ReportEvent micPass, "Putty_SSH(FAIL)", "Connect to " & IP_Addr_Port
+		End If
+	Else
+		Window("PuTTY").Activate
+		Window("PuTTY").Type Username & micReturn
+		Wait 3
+		Window("PuTTY").Type Password & micReturn
+		Wait 3
+
+		bmpName="Putty_SSH" & Environment("PicNum") & ".bmp"
+		Environment("PicNum")=Environment("PicNum")+1
+		Window("PuTTY").CaptureBitmap bmpName
+		Window("PuTTY").Type Exit_Cmd & micReturn
+		Wait 3
+
+		'Exit failed
+		If Window("PuTTY").Exist(1) Then
+			If PASS_FAIL="PASS" Then
+				Reporter.ReportEvent micFail, "Putty_SSH", "Connect to " & IP_Addr_Port, bmpName
+			ElseIf PASS_FAIL="FAIL" Then
+				Reporter.ReportEvent micPass, "Putty_SSH(FAIL)", "Connect to " & IP_Addr_Port, bmpName
+			End If
+
+			'Close window
+			Window("PuTTY").Close
+			Window("PuTTY").Dialog("PuTTY Exit Confirmation").Activate
+			Window("PuTTY").Dialog("PuTTY Exit Confirmation").WinButton("確定").Click
+		Else
+			If PASS_FAIL="PASS" Then
+				Reporter.ReportEvent micPass, "Putty_SSH", "Connect to " & IP_Addr_Port, bmpName
+			ElseIf PASS_FAIL="FAIL" Then
+				Reporter.ReportEvent micFail, "Putty_SSH(FAIL)", "Connect to " & IP_Addr_Port, bmpName
+			End If
+		End If
+	End If
+End Sub
+
+'SSH login test with Putty
+Sub Putty_SSH_Cmd(CmdArr)
+	IP_Addr_Port=CmdArr(0)
+	Username=CmdArr(1)
+	Password=CmdArr(2)
+	Exit_Cmd=CmdArr(3)
+	Protocol_Version=CmdArr(4)
+
+	InvokeApplication Environment("Tools_Path") & "\putty.exe"
+	Wait 5
+
+	SSHPort =""
+	If InStr(1,IP_Addr_Port,":") Then
+		SSHIP = Mid(IP_Addr_Port,1,InStr(1,IP_Addr_Port,":")-1)
+		SSHPort = Mid(IP_Addr_Port,InStr(1,IP_Addr_Port,":")+1)
+	Else
+		SSHIP = IP_Addr_Port
+	End If
+	
+	Window("PuTTY Configuration").Activate
+	Window("PuTTY Configuration").WinEdit("Host Name (or IP address)").Set SSHIP
+	Window("PuTTY Configuration").WinRadioButton("SSH").Click
+	If SSHPort<>"" Then
+		Window("PuTTY Configuration").WinEdit("Port").Set ""
+		Window("PuTTY Configuration").WinEdit("Port").Set SSHPort
+	End If
+
+	If Protocol_Version<>"" Then
+		Window("PuTTY Configuration").WinTreeView("Category:").Select "Connection;SSH"
+		Wait 1
+		Select Case Protocol_Version
+			Case "1"
+				Window("PuTTY Configuration").WinRadioButton("Version:1").Click
+			Case "1 only"
+				Window("PuTTY Configuration").WinRadioButton("Version:1 only").Click
+			Case "2"
+				Window("PuTTY Configuration").WinRadioButton("Version:2").Click
+			Case "2 only"
+				Window("PuTTY Configuration").WinRadioButton("Version:2 only").Click
+		End Select
+		Wait 1
+		Window("PuTTY Configuration").WinTreeView("Category:").Select "Session"	
+	End If
+	Wait 1
+	Window("PuTTY Configuration").WinButton("Open").Click
+
+	'Press Yes if PuTTY Security Alert dialog exists
+	If Window("PuTTY").Dialog("PuTTY Security Alert").Exist(10) Then
+		Window("PuTTY").Dialog("PuTTY Security Alert").WinButton("是(Y)").Click
+	End If
+	
+	Window("PuTTY").Activate
+	Window("PuTTY").Type Username & micReturn
+	Wait 3
+	Window("PuTTY").Type Password & micReturn
+	Wait 3
+
+	For i=5 To UBound(CmdArr)
+		Window("PuTTY").Type CmdArr(3) & micReturn
+		Wait 3
+	Next
+
+	bmpName="Putty_SSH" & Environment("PicNum") & ".bmp"
+	Environment("PicNum")=Environment("PicNum")+1
+	Window("PuTTY").CaptureBitmap bmpName
+	Window("PuTTY").Type CmdArr(UBound(CmdArr)) & micReturn		'Exit cmd
+	Wait 3
+
+	Reporter.ReportEvent micDone, "Putty_SSH_Cmd", "Connect to " & IP_Addr_Port, bmpName
+
+	Close_Process "putty.exe"
+End Sub
+
+'Capture packets with TShark
+Sub Tshark_Capture (Card_Index, Save_File, Capture_Filter, Wait_Time)
+	'NIC index or NIC name
+	If IsNumeric(Card_Index) = True Then
+		arguments = "-i " & Card_Index
+	ElseIf Instr(1, Card_Index, "{") > 0 Then
+		arguments = "-i \Device\NPF_" & Card_Index
+	Else
+		Set objWMIService = GetObject("winmgmts:\\.\root\cimv2")
+
+		'Search MAC address of NIC
+		Set colNetAdapters = objWMIService.ExecQuery _
+			("Select * From Win32_NetworkAdapter " _
+				& "Where NetConnectionID = '" & Card_Index & "'")	
+		For Each objNetAdapter In colNetAdapters
+			strMACAddress = objNetAdapter.MACAddress
+		Next
+		'Msgbox "strMACAddress="+Cstr(strMACAddress)
+
+		'Get SettingID
+		Set colItems = objWMIService.ExecQuery _
+			("Select * From Win32_NetworkAdapterConfiguration")
+		For Each objItem in colItems
+			'If objItem.MACAddress = strMACAddress and objItem.ServiceName="RTL8023xp" Then
+			If objItem.MACAddress = strMACAddress Then
+				Card_Index = objItem.SettingID
+				Print Card_Index
+				Exit For
+			End If
+		Next
+		arguments = "-i \Device\NPF_" & Card_Index
+	End If
+
+	'Capture file(PCAP)
+	If Save_File <> "" Then
+        arguments = arguments & " -w " & Chr(34) & Save_File & Chr(34)
+    Else
+        arguments = arguments & " -w " & Environment("Tools_Path") & "\Capture.cap"       
+    End If
+
+    If Capture_Filter <> "" Then
+        arguments = arguments & " -f " & Chr(34) & Capture_Filter & Chr(34)
+    End If
+
+	'Run Tshark
+
+	SystemUtil.Run "tshark.exe", arguments, "C:\Program Files\Wireshark",""
+
+	
+	If Wait_Time <> "" Then
+		Wait CInt(Wait_Time)
+		'Press Ctrl+C to stop capture
+		Window("Tshark window").Type micCtrlDwn & "c" & micCtrlUp
+	End If
+End Sub
+
+'Check capture result from Tshark_Capture
+Sub Tshark_Check (Read_Filter, Read_File, PASS_FAIL)
+	Set fso = CreateObject("Scripting.FileSystemObject")
+	Cmd = "tshark -V"
+
+	'Export file
+	If Read_File = "" Then
+		Read_File = Environment("Tools_Path") & "\Capture.cap"
+		Result_File = Environment("Tools_Path") & "\Capture.txt"
+		Cmd = Cmd & " -r " & Chr(34) & Read_File & Chr(34) & " > " & Chr(34) &Result_File & Chr(34)
+	Else
+		'xxx.cap" > "xxx.txt
+		If InStr(1,Read_File,">")>0 Then
+            Result_File=Mid(Read_File,InStr(1,Read_File,">")+3)
+            Cmd=Cmd & " -r " & Chr(34) & Read_File & Chr(34)
+        'xxx.cap
+        Else
+			Result_File=Mid(Read_File,1,InStr(1,Read_File,".")-1) & ".txt"
+            Cmd=Cmd & " -r " & Chr(34) & Read_File & Chr(34) & " > " & Chr(34) & Result_File & Chr(34)
+        End If	
+	End If
+
+	'Delete result file if it exists
+	If fso.FileExists(Result_File) Then
+		Set rf = fso.GetFile(Result_File)
+		rf.Delete
+	End If
+
+	'Filter
+	If Read_Filter <> "" Then
+		Read_Filter = Replace(Read_Filter, "OR", "||")
+		If Instr(GetOS,"XP") Then
+			Cmd = Cmd & " -R " & Chr(34) & Read_Filter & Chr(34)
+		Else
+			Cmd = Cmd & " -2 -R " & Chr(34) & Read_Filter & Chr(34)		
+		End If
+
+	End If
+
+	'Create BAT file
+
+	Set f = fso.OpenTextFile ("C:\Program Files\Wireshark\TsharkChk.bat", 2, True)
+	f.Write "cd/d C:\Program Files\Wireshark" & Chr(10)
+	f.Write Cmd
+    f.Close
+	SystemUtil.Run "TsharkChk.bat", "", "C:\Program Files\Wireshark",""
+
+	Wait_Time = 0
+	bFail = False
+	Do 
+		Wait 1
+		Wait_Time = Wait_Time+1
+		If Wait_Time>5 Then
+			bFail=True
+		End If
+	Loop Until fso.FileExists(Result_File)
+
+	If bFail Then
+		Reporter.ReportEvent micFail, "Tshark_Check", Result_File & " file not found"
+	Else
+		Set rf = fso.GetFile(Result_File)
+		Wait 10
+		If PASS_FAIL="PASS" Then
+			If rf.Size<>0 Then
+				Reporter.ReportEvent micPass, "Tshark_Check", "Check " & Read_File
+			Else
+				Reporter.ReportEvent micFail, "Tshark_Check", "Check " & Read_File
+			End If
+		Else
+			If rf.Size<>0 Then
+				Reporter.ReportEvent micFail, "Tshark_Check(FAIL)", "Check " & Read_File
+			Else
+				Reporter.ReportEvent micPass, "Tshark_Check(FAIL)", "Check " & Read_File
+			End If
+		End If
+	End If
+End Sub
+
+Sub Tshark_Check_v6 (Read_Filter, Read_File, PASS_FAIL)
+	Close_Process "cmd.exe"
+	Set fso = CreateObject("Scripting.FileSystemObject")
+	Cmd = "tshark -V"
+
+	'Export file
+	If Read_File = "" Then
+		Read_File = Environment("Tools_Path") & "\Capture.cap"
+		Result_File = Environment("Tools_Path") & "\Capture.txt"
+		Cmd = Cmd & " -r " & Chr(34) & Read_File & Chr(34) & " > " & Chr(34) &Result_File & Chr(34)
+	Else
+		'xxx.cap" > "xxx.txt
+		If InStr(1,Read_File,">")>0 Then
+            Result_File=Mid(Read_File,InStr(1,Read_File,">")+3)
+            Cmd=Cmd & " -r " & Chr(34) & Read_File & Chr(34)
+        'xxx.cap
+        Else
+			Result_File=Mid(Read_File,1,InStr(1,Read_File,".")-1) & ".txt"
+            Cmd=Cmd & " -r " & Chr(34) & Read_File & Chr(34) & " > " & Chr(34) & Result_File & Chr(34)
+        End If	
+	End If
+
+	'Delete result file if it exists
+	If fso.FileExists(Result_File) Then
+		Set rf = fso.GetFile(Result_File)
+		rf.Delete
+	End If
+
+	'Filter
+	If Read_Filter <> "" Then
+		Read_Filter = Replace(Read_Filter, "OR", "||")
+		Cmd = Cmd & " -Y " & Chr(34) & Read_Filter & Chr(34)
+	End If
+
+	'Create BAT file
+	Set f = fso.OpenTextFile (Environment("Tools_Path") & "\WiresharkPortable\App\Wireshark\TsharkChk.bat", 2, True)
+	f.Write "cd/d " & Environment("Tools_Path") & "\WiresharkPortable\App\Wireshark" & Chr(10)
+	f.Write Cmd
+    f.Close
+
+	SystemUtil.Run "TsharkChk.bat", "", Environment("Tools_Path") & "\WiresharkPortable\App\Wireshark",""
+
+	Wait_Time = 0
+	bFail = False
+	Do 
+		Wait 1
+		Wait_Time = Wait_Time+1
+		If Wait_Time>5 Then
+			bFail=True
+		End If
+	Loop Until fso.FileExists(Result_File)
+
+	Do
+		Wait 3
+	Loop While Window("Cmd").Exist(5)
+
+	If bFail Then
+		Reporter.ReportEvent micFail, "Tshark_Check", Result_File & " file not found"
+	Else
+		Set rf = fso.GetFile(Result_File)
+		Wait 5
+		If PASS_FAIL="PASS" Then
+			If rf.Size<>0 Then
+				Reporter.ReportEvent micPass, "Tshark_Check", "Check " & Read_File
+			Else
+				Reporter.ReportEvent micFail, "Tshark_Check", "Check " & Read_File
+			End If
+		Else
+			If rf.Size<>0 Then
+				Reporter.ReportEvent micFail, "Tshark_Check(FAIL)", "Check " & Read_File
+			Else
+				Reporter.ReportEvent micPass, "Tshark_Check(FAIL)", "Check " & Read_File
+			End If
+		End If
+	End If
+End Sub
+
+Function Tshark_Check_Return (Read_Filter, Read_File)
+	Set fso = CreateObject("Scripting.FileSystemObject")
+	Cmd = "tshark -V"
+
+	'Export file
+	If Read_File = "" Then
+		Read_File = Environment("Tools_Path") & "\Capture.cap"
+		Result_File = Environment("Tools_Path") & "\Capture.txt"
+		Cmd = Cmd & " -r " & Chr(34) & Read_File & Chr(34) & " > " & Chr(34) &Result_File & Chr(34)
+	Else
+		'xxx.cap" > "xxx.txt
+		If InStr(1,Read_File,">")>0 Then
+            Result_File=Mid(Read_File,InStr(1,Read_File,">")+3)
+            Cmd=Cmd & " -r " & Chr(34) & Read_File & Chr(34)
+        'xxx.cap
+        Else
+			Result_File=Mid(Read_File,1,InStr(1,Read_File,".")-1) & ".txt"
+            Cmd=Cmd & " -r " & Chr(34) & Read_File & Chr(34) & " > " & Chr(34) & Result_File & Chr(34)
+        End If	
+	End If
+
+	'Delete result file if it exists
+	If fso.FileExists(Result_File) Then
+		Set rf = fso.GetFile(Result_File)
+		rf.Delete
+	End If
+
+	'Filter
+	If Read_Filter <> "" Then
+		Read_Filter = Replace(Read_Filter, "OR", "||")
+		If Instr(GetOS,"XP") Then
+			Cmd = Cmd & " -R " & Chr(34) & Read_Filter & Chr(34)
+		Else
+			Cmd = Cmd & " -2 -R " & Chr(34) & Read_Filter & Chr(34)		
+		End If
+	End If
+
+	'Create BAT file
+
+	Set f = fso.OpenTextFile ("C:\Program Files\Wireshark\TsharkChk.bat", 2, True)
+	f.Write "cd/d C:\Program Files\Wireshark" & Chr(10)
+	f.Write Cmd
+    f.Close
+	SystemUtil.Run "TsharkChk.bat", "", "C:\Program Files\Wireshark",""
+
+	Wait_Time = 0
+	bFail = False
+	Do 
+		Wait 1
+		Wait_Time = Wait_Time+1
+		If Wait_Time>5 Then
+			bFail=True
+		End If
+	Loop Until fso.FileExists(Result_File)
+
+	If bFail Then
+		Tshark_Check_Return=False
+	Else
+		Set rf = fso.GetFile(Result_File)
+		Wait 5
+		If rf.Size<>0 Then
+			Tshark_Check_Return=True
+		Else
+			Tshark_Check_Return=False
+		End If
+	End If
+End Function
+
+'Send traffic with SuperGen
+'SuperGen Array("Start", "Device=<NIC name>", "<Parameter>=<value>",..."Create New Thread")
+'SuperGen Array("Stop All Thread", "Exit")
+Sub SuperGen(Cmd_Arr)
+	For i=0 to UBound(Cmd_Arr)
+		'Set parameter value
+		If InStr(1,Cmd_Arr(i),"=")>0 Then
+			setCmd=Mid(Cmd_Arr(i),1,InStr(1,Cmd_Arr(i),"=")-1)
+			setValue=Mid(Cmd_Arr(i),InStr(1,Cmd_Arr(i),"=")+1)
+			If setCmd="Device" Or setCmd="Protocol" Or setCmd="Ether Type" Then
+				If Instr(1, setValue, "Custom") > 0 Then
+					myvalue=Split(setValue, "_")
+					Dialog("SuperGen").WinComboBox(setCmd).Select "Custom"
+					Wait 1
+					Dialog("SuperGen").WinComboBox(setCmd).Type myvalue(1)
+				ElseIf IsNumeric(setValue) Then
+					Dialog("SuperGen").WinComboBox(setCmd).Select CInt(setValue)
+				Else
+					Dialog("SuperGen").WinComboBox(setCmd).Select setValue
+				End If
+			Else
+				Dialog("SuperGen").WinEdit(setCmd).Set setValue
+			End If
+		Else
+			'Start application
+			If Cmd_Arr(i)="Start" Then
+				InvokeApplication Environment("Tools_Path") & "\SuperGen\SuperGen.exe"
+
+			'Press button (Create New Thread, Stop All Thread, Exit)
+			Else
+				Dialog("SuperGen").WinButton(Cmd_Arr(i)).Click
+			End If
+		End If
+	Next
+End Sub
+
+'Start Kiwi Syslog Daemon
+Sub Syslog_Start
+	InvokeApplication Environment("Tools_Path") & "\Syslogd.exe"
+	Wait 10
+End Sub
+
+'Search syslog in Kiwi Syslog Daemon
+Sub Syslog_Scan(Search_String, PASS_FAIL, Search_Property)
+	Set fso = CreateObject("Scripting.FileSystemObject")
+	Set MyClipboard=CreateObject("Mercury.Clipboard")
+	MyClipboard.Clear
+
+	'Delete result file if it exists
+	If fso.FileExists("C:\AutoTest\Tools\Syslog.txt") Then
+		Set df = fso.GetFile("C:\AutoTest\Tools\Syslog.txt")
+		df.Delete
+	End If
+
+	VbWindow("Kiwi Syslog").Activate
+	VbWindow("Kiwi Syslog").Maximize
+	VbWindow("Kiwi Syslog").WinObject("Log Table").VScroll micScrollStart
+
+	'Get all logs message
+	VbWindow("Kiwi Syslog").WinObject("Log Table").Type  micCtrlDwn & "a" & micCtrlUp
+	VbWindow("Kiwi Syslog").WinObject("Log Table").Type  micCtrlDwn & "c" & micCtrlUp
+	logData=MyClipboard.GetText
+
+	'Replace | to "
+	If Instr(1, Search_String, "|") > 0 Then
+		TheString=Replace( Search_String, "|", """")
+	Else
+		TheString=Search_String
+	End If
+
+	'Search logs in all properties
+	If Search_Property="" Then
+		If InStr(1,logData,TheString)>0 Then
+			If PASS_FAIL="PASS" Then
+				Reporter.ReportEvent micPass, "Syslog_Scan", "Search log: " & Search_String
+			ElseIf PASS_FAIL="FAIL" Then
+				Reporter.ReportEvent micFail, "Syslog_Scan(FAIL)", "Search log: " & Search_String
+			End If
+		Else
+			If PASS_FAIL="FAIL" Then
+				Reporter.ReportEvent micPass, "Syslog_Scan(FAIL)", "Search log: " & Search_String
+			ElseIf PASS_FAIL="PASS" Then
+				Reporter.ReportEvent micFail, "Syslog_Scan", "Search log: " & Search_String
+			End If
+		End If
+
+	'Search logs in specific propery
+	Else
+		'Save logs as file
+		Set LogFile = fso.CreateTextFile("C:\AutoTest\Tools\Syslog.txt")
+		LogFile.Write logData
+		LogFile.Close
+		Wait 1
+
+		Select Case Search_Property
+			Case "Date"
+				PropertyIndex=0
+			Case "Time"
+				PropertyIndex=1
+			Case "Priority"
+				PropertyIndex=2
+			Case "Hostname"
+				PropertyIndex=3
+			Case "Message"
+				PropertyIndex=4
+			Case Else
+				PropertyIndex=4
+		End Select
+
+		bGetLog=False
+
+		'Read file by line
+		Set rl=fso.OpenTextFile("C:\AutoTest\Tools\Syslog.txt")
+		Do Until rl.AtEndOfStream
+			strLine=rl.ReadLine
+			ArrLine=Split(strLine,Chr(9))
+
+			If InStr(1,ArrLine(PropertyIndex),TheString)>0 Then
+				If PASS_FAIL="PASS" Then
+					Reporter.ReportEvent micPass, "Syslog_Scan", "Search log: " & Search_String
+				ElseIf PASS_FAIL="FAIL" Then
+					Reporter.ReportEvent micFail, "Syslog_Scan(FAIL)", "Search log: " & Search_String
+				End If
+
+				bGetLog=True
+				Exit Do
+			End If
+		Loop
+
+		'Log not found
+		If bGetLog=False Then
+			If PASS_FAIL="FAIL" Then
+				Reporter.ReportEvent micPass, "Syslog_Scan(FAIL)", "Search log: " & Search_String
+			ElseIf PASS_FAIL="PASS" Then
+				Reporter.ReportEvent micFail, "Syslog_Scan", "Search log: " & Search_String
+			End If
+		End If
+	End If
+End Sub
+
+'Close Kiwi Syslog Daemon.
+Sub Syslog_Close
+	VbWindow("Kiwi Syslog").Activate
+	VbWindow("Kiwi Syslog").Close
+End Sub
+
+'SNMP get action
+Sub SNMP_Get (Version, Community, Agent, OID, OutputFile)
+	If InStr(1,OID,"|")>0 Then
+		arrOID = Split(OID, "|")
+
+		cmd = "-v " & Version & " -c " & Community & " " & Agent
+		For i=0 To UBound(arrOID)
+			cmd = cmd & " " & arrOID(i)
+		Next
+		cmd = cmd & " > " & OutputFile
+		Dos_Cmd_Wait Environment("Tools_Path") & "\SNMP", "snmpget.exe", cmd, 30
+	Else
+		Dos_Cmd_Wait Environment("Tools_Path") & "\SNMP", "snmpget.exe", "-v " & Version & " -c " & Community & " " & Agent & " " & OID & " > " & OutputFile, 30
+	End If
+End Sub
+
+'SNMP walk action
+Sub SNMP_Walk (Version, Community, Agent, OID, OutputFile)
+	Dos_Cmd_Wait Environment("Tools_Path") & "\SNMP", "snmpwalk.exe", "-v " & Version & " -c " & Community & " " & Agent & " " & OID & " > " & OutputFile, 60
+End Sub
+
+'SNMP set action
+Sub SNMP_Set (Version, Community, Agent, OID, OutputFile, DataType, SetValue)
+	If InStr(1,OID,"|")>0 Then
+		arrOID = Split(OID, "|")
+		arrDataType = Split(DataType, "|")
+		arrSetValue = Split(SetValue, "|")
+
+		cmd = "-v " & Version & " -c " & Community & " " & Agent
+		For i=0 To UBound(arrOID)
+			If arrDataType(i) = "s" Then
+				cmd = cmd & " " & arrOID(i) & " " & arrDataType(i) & " """ & arrSetValue(i) & """"
+			Else
+				cmd = cmd & " " & arrOID(i) & " " & arrDataType(i) & " " & arrSetValue(i)
+			End If
+		Next
+		cmd = cmd & " > " & OutputFile
+		Dos_Cmd_Wait Environment("Tools_Path") & "\SNMP", "snmpset.exe", cmd, 30
+	Else
+		If DataType = "s" Then
+			Dos_Cmd_Wait Environment("Tools_Path") & "\SNMP", "snmpset.exe", "-v " & Version & " -c " & Community & " " & Agent & " " & OID & " " & DataType & " """ & SetValue & """ > " & OutputFile, 30
+		Else
+			Dos_Cmd_Wait Environment("Tools_Path") & "\SNMP", "snmpset.exe", "-v " & Version & " -c " & Community & " " & Agent & " " & OID & " " & DataType & " " & SetValue & " > " & OutputFile, 30
+		End If
+	End If
+End Sub
+
+'SNMP trapd action
+Sub SNMP_Trapd (LogFile)
+	Dos_Cmd_Wait Environment("Tools_Path") & "\SNMP", "snmptrapd.exe", "-c " & Environment("Tools_Path") & "\SNMP\snmptrapd.conf -Lf " & LogFile & " -f -On", 1
+End Sub
+
+'Check SNMP resulus with conditional range
+Sub SNMP_Check(Result_File, OID, Condition)
+	'Search parameter and value
+	Set fso = CreateObject("Scripting.FileSystemObject")
+	Set rl=fso.OpenTextFile(Result_File)
+	Do Until rl.AtEndOfStream
+		strLine=rl.ReadLine
+		If InStr(1, strLine, OID)>0 Then
+			strValue=Mid(strLine, InStr(1, strLine, ":")+1)
+			Exit Do
+		End If
+	Loop
+	rl.Close
+
+	If InStr(1, Condition, ">=") = 1 Then
+		If Clng(strValue) >= Clng(Mid(Condition, 3)) Then
+			Reporter.ReportEvent micPass, "SNMP_Check: " & OID, strValue & Condition
+		Else
+			Reporter.ReportEvent micFail, "SNMP_Check: " & OID, strValue & " not " & Condition
+		End If
+	ElseIf InStr(1, Condition, "<=") = 1 Then
+		If Clng(strValue) <= Clng(Mid(Condition, 3)) Then
+			Reporter.ReportEvent micPass, "SNMP_Check: " & OID, strValue & Condition
+		Else
+			Reporter.ReportEvent micFail, "SNMP_Check: " & OID, strValue & " not " & Condition
+		End If
+	ElseIf InStr(1, Condition, "<>") = 1 Then
+		If Clng(strValue) <> Clng(Mid(Condition, 3)) Then
+			Reporter.ReportEvent micPass, "SNMP_Check: " & OID, strValue & Condition
+		Else
+			Reporter.ReportEvent micFail, "SNMP_Check: " & OID, strValue & " not " & Condition
+		End If
+	ElseIf InStr(1, Condition, ">") = 1 Then
+		If Clng(strValue) > Clng(Mid(Condition, 2)) Then
+			Reporter.ReportEvent micPass, "SNMP_Check: " & OID, strValue & Condition
+		Else
+			Reporter.ReportEvent micFail, "SNMP_Check: " & OID, strValue & " is not " & Condition
+		End If
+	ElseIf InStr(1, Condition, "<") = 1 Then
+		If Clng(strValue) < Clng(Mid(Condition, 2)) Then
+			Reporter.ReportEvent micPass, "SNMP_Check: " & OID, strValue & Condition
+		Else
+			Reporter.ReportEvent micFail, "SNMP_Check: " & OID, strValue & " is not " & Condition
+		End If
+	ElseIf InStr(1, Condition, "=") = 1 Then
+		If Trim(strValue) = Mid(Condition, 2) Then
+			Reporter.ReportEvent micPass, "SNMP_Check: " & OID, strValue & Condition
+		Else
+			Reporter.ReportEvent micFail, "SNMP_Check: " & OID, strValue & " is not " & Condition
+		End If
+	ElseIf InStr(1, Condition, "~") > 0 Then
+		If Clng(strValue) >= Clng(Mid(Condition, 1, InStr(1, Condition, "~") - 1)) And Clng(strValue) <= Clng(Mid(Condition, InStr(1, Condition, "~") + 1)) Then
+			Reporter.ReportEvent micPass, "SNMP_Check: " & OID, strValue & " is between " & Condition
+		Else
+			Reporter.ReportEvent micFail, "SNMP_Check: " & OID, strValue & " is not  between " & Condition
+		End If
+	End If
+End Sub
+
+Function SNMP_Value(Result_File, OID)
+	'Search parameter and value
+	Set fso = CreateObject("Scripting.FileSystemObject")
+	Set rl=fso.OpenTextFile(Result_File)
+	Do Until rl.AtEndOfStream
+		strLine=rl.ReadLine
+		If InStr(1, strLine, OID)>0 Then
+			SNMP_Value=Mid(strLine, InStr(1, strLine, ":")+1)
+			Exit Do
+		End If
+	Loop
+	rl.Close
+End Function
+
+'Check 2 values in specific condition
+Sub Counter_Check(ValueA, ValueB, Condition)
+	If IsNumeric(ValueA) And IsNumeric(ValueB) Then
+		AdecB = ValueA-ValueB
+		
+		If InStr(1, Condition, ">=") = 1 Then
+			If Clng(AdecB) >= Clng(Mid(Condition, 3)) Then
+				Reporter.ReportEvent micPass, "Counter_Check: ", AdecB & Condition
+			Else
+				Reporter.ReportEvent micFail, "Counter_Check: ", AdecB & " not " & Condition
+			End If
+		ElseIf InStr(1, Condition, "<=") = 1 Then
+			If Clng(AdecB) <= Clng(Mid(Condition, 3)) Then
+				Reporter.ReportEvent micPass, "Counter_Check: ", AdecB & Condition
+			Else
+				Reporter.ReportEvent micFail, "Counter_Check: ", AdecB & " not " & Condition
+			End If
+		ElseIf InStr(1, Condition, "<>") = 1 Then
+			If Clng(AdecB) <> Clng(Mid(Condition, 3)) Then
+				Reporter.ReportEvent micPass, "Counter_Check: ", AdecB & Condition
+			Else
+				Reporter.ReportEvent micFail, "Counter_Check: ", AdecB & " not " & Condition
+			End If
+		ElseIf InStr(1, Condition, ">") = 1 Then
+			If Clng(AdecB) > Clng(Mid(Condition, 2)) Then
+				Reporter.ReportEvent micPass, "Counter_Check: ", AdecB & Condition
+			Else
+				Reporter.ReportEvent micFail, "Counter_Check: ", AdecB & " is not " & Condition
+			End If
+		ElseIf InStr(1, Condition, "<") = 1 Then
+			If Clng(AdecB) < Clng(Mid(Condition, 2)) Then
+				Reporter.ReportEvent micPass, "Counter_Check: ", AdecB & Condition
+			Else
+				Reporter.ReportEvent micFail, "Counter_Check: ", AdecB & " is not " & Condition
+			End If
+		ElseIf InStr(1, Condition, "=") = 1 Then
+			If Trim(AdecB) = Mid(Condition, 2) Then
+				Reporter.ReportEvent micPass, "Counter_Check: ", AdecB & Condition
+			Else
+				Reporter.ReportEvent micFail, "Counter_Check: ", AdecB & " is not " & Condition
+			End If
+		ElseIf InStr(1, Condition, "~") > 0 Then
+			If Clng(AdecB) >= Clng(Mid(Condition, 1, InStr(1, Condition, "~") - 1)) And Clng(AdecB) <= Clng(Mid(Condition, InStr(1, Condition, "~") + 1)) Then
+				Reporter.ReportEvent micPass, "Counter_Check: ", AdecB & " is between " & Condition
+			Else
+				Reporter.ReportEvent micFail, "Counter_Check: ", AdecB & " is not  between " & Condition
+			End If
+		End If
+	Else
+		If Not IsNumeric(ValueA) Then
+			Reporter.ReportEvent micFail, "Counter_Check: ", "ValueA is not numeric"
+		ElseIf Not IsNumeric(ValueB) Then
+			Reporter.ReportEvent micFail, "Counter_Check: ", "ValueB is not numeric"
+		End If
+	End If
+End Sub
+
+'Open ZyMail application and login mailbox (receive messages)
+Sub Mail_Open (Mail_Server, Account, Password)
+	InvokeApplication Environment("Tools_Path") & "\mail\ZyMail.exe"
+	
+	VbWindow("ZyMail").VbEdit("Mail Server IP").Set Mail_Server
+	VbWindow("ZyMail").VbEdit("Mail Account").Set Account
+	VbWindow("ZyMail").VbEdit("Password").Set Password
+	VbWindow("ZyMail").VbButton("Connect").Click
+
+	If Not VbWindow("ZyMail").VbButton("Disconnect").Exist(5) Then
+		Reporter.ReportEvent micFail, "Mail_Open", "Mail account login failed."
+	End If
+End Sub
+
+Sub Mail_Fail (Account_To,Subject,Content)
+	Environment("Tools_Path") = "C:\AutoTest\Tools"
+	Place = Environment("Tools_Path") & "\mail\Profile.inf"
+	File_WriteText Place,"To=" & Account_To & "@mitrastar.com.tw" & vbcrlf & "Subject=" & Subject & vbcrlf & "Content=" & Content
+	InvokeApplication Environment("Tools_Path") & "\mail\ZyMail.exe"
+	wait 3
+	File_Delete Place
+End Sub
+
+'Check mail subject, content, or number
+Sub Mail_Check(Conditions, PASS_FAIL)
+	chkSubject = ""
+	'Multi conditions
+	If InStr(1, Conditions, "&&") > 0 Then
+		arrCon = Split(Conditions, "&&")
+		For i=0 To UBound(arrCon)
+			chkCon = Trim(arrCon(i))
+	
+			If InStr(1, chkCon, "Subject") = 1 Then
+				chkSubject = Mid(chkCon, InStr(1, chkCon, "=")+1)
+			ElseIf InStr(1, chkCon, "Content") = 1 Then
+				arrContent = Split(Mid(chkCon, InStr(1, chkCon, "=")+1), "|")
+			ElseIf InStr(1, chkCon, "Number") = 1 Then
+				If InStr(1, chkCon, "=") > 0 Then
+					conNumber = "="
+					chkNumber = Mid(chkCon, InStr(1, chkCon, "=")+1)
+				ElseIf InStr(1, chkCon, ">") > 0 Then
+					conNumber = ">"
+					chkNumber = Mid(chkCon, InStr(1, chkCon, ">")+1)
+				ElseIf InStr(1, chkCon, "<") > 0 Then
+					conNumber = "<"
+					chkNumber = Mid(chkCon, InStr(1, chkCon, "<")+1)
+				End If
+			End If
+		Next
+	'Single condition
+	Else
+		chkCon = Conditions
+		If InStr(1, chkCon, "Subject") = 1 Then
+			chkSubject = Mid(chkCon, InStr(1, chkCon, "=")+1)
+		ElseIf InStr(1, chkCon, "Content") = 1 Then
+			arrContent = Split(Mid(chkCon, InStr(1, chkCon, "=")+1), "|")
+		ElseIf InStr(1, chkCon, "Number") = 1 Then
+			If InStr(1, chkCon, "=") > 0 Then
+				conNumber = "="
+				chkNumber = Mid(chkCon, InStr(1, chkCon, "=")+1)
+			ElseIf InStr(1, chkCon, ">") > 0 Then
+				conNumber = ">"
+				chkNumber = Mid(chkCon, InStr(1, chkCon, ">")+1)
+			ElseIf InStr(1, chkCon, "<") > 0 Then
+				conNumber = "<"
+				chkNumber = Mid(chkCon, InStr(1, chkCon, "<")+1)
+			End If
+		End If	
+	End If
+	
+	nPass = False
+	bPass = False
+	
+	inCount = VbWindow("ZyMail").WinListView("In Box").GetItemsCount
+	'Check mail number
+	If chkNumber <> "" Then
+		Select Case conNumber
+			Case "="
+				If inCount = CInt(chkNumber) Then nPass = True
+			Case ">"
+				If inCount > CInt(chkNumber) Then nPass = True
+			Case "<"
+				If inCount < CInt(chkNumber) Then nPass = True
+		End Select
+	End If
+	
+	For i=0 To inCount-1
+		VbWindow("ZyMail").WinListView("In Box").Select(i)
+		subItem = VbWindow("ZyMail").WinListView("In Box").GetSubItem(i, "Subject")
+		'Subject match or ignore subject
+		If subItem = chkSubject Or chkSubject = "" Then
+			'Check contents
+			If InStr(1, Conditions, "Content=") > 0 Then		
+				mailContent = VbWindow("ZyMail").VbEditor("Status").GetROProperty("text")
+				contentFound = 0
+				For j=0 To UBound(arrContent)
+					If InStr(1, mailContent, arrContent(j)) > 0 Then
+						contentFound = contentFound+1
+					End If
+				Next
+				If contentFound = UBound(arrContent)+1 Then
+					bPass = True
+					Exit For
+				End If
+			'Check subject only
+			Else
+				bPass = True
+				Exit For
+			End If
+		End If
+	Next
+	
+	If bPass And nPass Then
+		If PASS_FAIL = "PASS"Then
+			Reporter.ReportEvent micPass, "Mail_Check: " & Conditions, inCount & " messages received"
+		Else
+			Reporter.ReportEvent micFail, "Mail_Check(FAIL): " & Conditions, inCount & " messages received"
+		End If
+	Else
+		If PASS_FAIL = "PASS"Then
+			Reporter.ReportEvent micFail, "Mail_Check: " & Conditions, inCount & " messages received"
+		Else
+			Reporter.ReportEvent micPass, "Mail_Check(FAIL): " & Conditions, inCount & " messages received"
+		End If
+	End If
+End Sub
+
+'Delete all mails in ZyMail inbox
+Sub Mail_DeleteAll
+	VbWindow("ZyMail").Activate
+	VbWindow("ZyMail").VbButton("Delete All Mails").Click
+	Wait 2
+End Sub
+
+'Close ZyMail application
+Sub Mail_Close
+	If VbWindow("ZyMail").VbButton("Disconnect").Exist(1) Then
+		VbWindow("ZyMail").VbButton("Disconnect").Click
+	End If
+	Wait 1
+	
+	VbWindow("ZyMail").Close
+End Sub
+
+'Send Email with CDO (Collaboration Data Objects)
+Sub Mail_Send(MailServer, Account, Password, FromMailAddr, ToMailAddr, Subject, Content, Attachment)
+	Const cdoSendUsingPickup = 1 'Send message using the local SMTP service pickup directory.
+	Const cdoSendUsingPort = 2 'Send the message using the network (SMTP over the network).
+
+	Const cdoAnonymous = 0 'Do not authenticate
+	Const cdoBasic = 1 'basic (clear-text) authentication
+	Const cdoNTLM = 2 'NTLM
+
+	SMTPPort = 25
+	SMTPSSL = False
+	'SMTP with SSL EX: mail.zyxel.com.tw(SSL)
+	If InStr(1, MailServer, "(SSL)") > 0 Then
+		SMTPSSL = True
+		MailServer = Mid(MailServer, 1, InStr(1, MailServer, "(SSL)")-1)
+	End If
+	'Assign port number EX: mail.zyxel.com.tw:225
+	If InStr(1, MailServer, ":") > 0 Then
+		SMTPPort = CInt(Mid(MailServer, InStr(1, MailServer, ":")+1))
+		MailServer = Mid(MailServer, 1, InStr(1, MailServer, ":")-1)
+	End If
+
+	Set objMessage = CreateObject("CDO.Message")
+	objMessage.Subject = Subject
+	objMessage.From = FromMailAddr
+	objMessage.To = ToMailAddr
+	'objMessage.Cc = CCGroup
+	objMessage.HTMLBody = Content
+
+	If Attachment <> "" Then
+		objMessage.AddAttachment Attachment
+	End If
+
+	'==This section provides the configuration information for the remote SMTP server.
+
+	objMessage.Configuration.Fields.Item _
+	("http://schemas.microsoft.com/cdo/configuration/sendusing") = cdoSendUsingPort
+
+	'Name or IP of Remote SMTP Server
+	objMessage.Configuration.Fields.Item _
+	("http://schemas.microsoft.com/cdo/configuration/smtpserver") = MailServer
+
+	'Type of authentication, NONE, Basic (Base64 encoded), NTLM
+	objMessage.Configuration.Fields.Item _
+	("http://schemas.microsoft.com/cdo/configuration/smtpauthenticate") = cdoBasic
+
+	'Your UserID on the SMTP server
+	objMessage.Configuration.Fields.Item _
+	("http://schemas.microsoft.com/cdo/configuration/sendusername") = Account
+
+	'Your password on the SMTP server
+	objMessage.Configuration.Fields.Item _
+	("http://schemas.microsoft.com/cdo/configuration/sendpassword") = Password
+
+	'Server port (typically 25)
+	objMessage.Configuration.Fields.Item _
+	("http://schemas.microsoft.com/cdo/configuration/smtpserverport") = SMTPPort
+
+	'Use SSL for the connection (False or True)
+	objMessage.Configuration.Fields.Item _
+	("http://schemas.microsoft.com/cdo/configuration/smtpusessl") = SMTPSSL
+
+	'Connection Timeout in seconds (the maximum time CDO will try to establish a connection to the SMTP server)
+	objMessage.Configuration.Fields.Item _
+	("http://schemas.microsoft.com/cdo/configuration/smtpconnectiontimeout") = 60
+
+	objMessage.Configuration.Fields.Update
+
+	'==End remote SMTP server configuration section==
+
+	objMessage.Send
+End Sub
+
+'Open OmniPeek and start capture
+Sub OmniPeek_Start_Capture (Capture_Template)
+	If InStr(1,CStr(Environment("OS")),"XP")>0 Then
+		InvokeApplication "C:\Program Files\WildPackets\OmniPeek\omnipeek.exe /autostart """ & Capture_Template & """"
+	Else
+		InvokeApplication "C:\Program Files (x86)\WildPackets\OmniPeek\omnipeek.exe /autostart """ & Capture_Template & """"
+	End If
+End Sub
+
+'Stop OmniPeek capture and save PCAP file
+Sub OmniPeek_Stop_Capture (PCAP_File)
+	Window("OmniPeek").Window("Capture").WinButton("Stop Capture").Click
+
+	Set fso = CreateObject("Scripting.FileSystemObject")
+	If (fso.FileExists(PCAP_File)) Then
+		Set ResultFile = fso.GetFile(PCAP_File)
+		ResultFile.Delete
+		Wait 2
+	End If
+
+	'Save PCAP file
+	Window("OmniPeek").Type micCtrlDwn & "s" & micCtrlUp	'Ctrl+S
+	If Window("OmniPeek").Dialog("另存新檔").Exist(5) Then		
+		Window("OmniPeek").Dialog("另存新檔").WinComboBox("存檔類型(T):").Select "Libpcap (Wireshark, AirPcap, Tcpdump, etc.) (*.pcap;*.cap;*.dmp;*.appcap;*.appcapz)"
+		Window("OmniPeek").Dialog("另存新檔").WinEdit("檔名(N):").Set PCAP_File
+		Window("OmniPeek").Dialog("另存新檔").WinButton("儲存(S)").Click
+	Else
+		Reporter.ReportEvent micFail, "OmniPeek_Stop_Capture", "No packets captured."
+	End If
+	
+	Window("OmniPeek").Close
+	
+	If Window("OmniPeek").Dialog("OmniPeek").Exist(2) Then
+		Window("OmniPeek").Dialog("OmniPeek").WinButton("是(Y)").Click
+	End If
+End Sub
+
+'Play video stream with VLC
+Sub VLC_Play (Stream_URL)
+   InvokeApplication Environment("Tools_Path") & "\VLCPortable\VLCPortable.exe " & Stream_URL
+End Sub
+
+'Parser RTP sequence numbers from captured file. And check RTP payload.
+Sub RTP_Check (PCAP_File, UDP_Port, PASS_FAIL)
+	Set fso = CreateObject("Scripting.FileSystemObject")
+	Result_File = Environment("Tools_Path") & "\VLCPortable\RTP_Result.txt"
+
+	'Read PCAP file and export result to text file
+	Cmd = "tshark -r " & Chr(34) & PCAP_File & Chr(34) & " > " & Chr(34) &Result_File & Chr(34)
+
+	'Decode UDP packets as RTP
+	Cmd = Cmd & " -d udp.port==" & UDP_Port & ",rtp"
+
+	'Show sequence field only. And filter paylode type 33 (MPEG-II).
+	Cmd = Cmd & " -T fields -e rtp.seq  -R " & Chr(34) & "rtp.p_type == 33 && udp.port == " & UDP_Port & Chr(34)
+
+	'Delete result file if it exists
+	If fso.FileExists(Result_File) Then
+		Set rf = fso.GetFile(Result_File)
+		rf.Delete
+	End If
+
+	'Create BAT file
+	If InStr(1,CStr(Environment("OS")),"XP")>0 Then
+		Set f = fso.OpenTextFile ("C:\Program Files\Wireshark\TsharkChk.bat", 2, True)
+		f.Write "cd/d C:\Program Files\Wireshark" & Chr(10)
+		f.Write Cmd
+	    f.Close
+		SystemUtil.Run "TsharkChk.bat", "", "C:\Program Files\Wireshark",""
+	Else
+		Set f = fso.OpenTextFile ("C:\Program Files (x86)\Wireshark\TsharkChk.bat", 2, True)
+		f.Write "cd/d C:\Program Files (x86)\Wireshark" & Chr(10)
+		f.Write Cmd
+  	  	f.Close
+		SystemUtil.Run "TsharkChk.bat", "", "C:\Program Files (x86)\Wireshark",""
+	End If
+
+	Wait_Time = 0
+	bFail = False
+	Do While Window("Cmd").Exist(1)
+		Wait_Time = Wait_Time+1
+		If Wait_Time > 10 Then
+			bFail=True
+			Exit Do
+		End If
+	Loop
+	Wait 3
+
+	If fso.FileExists(Result_File) Then
+		If PASS_FAIL = "PASS" Then	'Receive RTP payload and loss < 1%
+			preSeq = 0
+			curSeq = 0
+			sumSeq = 0
+			lag = 0
+			Set rl=fso.OpenTextFile(Result_File)
+			Do Until rl.AtEndOfStream
+				strLine=rl.ReadLine
+				sumSeq = sumSeq+1
+				preSeq = curSeq
+				curSeq = Clng(strLine)
+				If preSeq <> 0 And curSeq <> (preSeq+1) Then
+					lag = lag+1
+					curSeq = 0
+				End If
+			Loop
+			rl.Close
+		
+			If (lag/sumSeq) < 0.01 Then
+				Reporter.ReportEvent micPass, "RTP_Check", lag & " RTP lost."
+			Else
+				Reporter.ReportEvent micFail, "RTP_Check", lag & " RTP lost."
+			End If
+		Else
+			Set rl = fso.GetFile(Result_File)
+			If PASS_FAIL = "FAIL" Then	'Expect no RTP payload received.
+				If rl.Size = 0 Then
+					Reporter.ReportEvent micPass, "RTP_Check(FAIL)", "No RTP payload received."
+				Else
+					Reporter.ReportEvent micFail, "RTP_Check(FAIL)", "RTP payload received."
+				End If
+			ElseIf PASS_FAIL = "RANDOM" Then	'More then 1 RTP packet is fine.
+				If rl.Size > 0 Then
+					Reporter.ReportEvent micPass, "RTP_Check(RANDOM)", "RTP payload received."
+				Else
+					Reporter.ReportEvent micFail, "RTP_Check(RANDOM)", "No RTP payload received."
+				End If
+			End If
+		End If
+	Else
+		Reporter.ReportEvent micFail, "RTP_Check", "Result file not exists."
+	End If
+End Sub
+
+'Open Kinsky (DLNA client)
+Sub Kinsky_Open
+	If InStr(1,CStr(Environment("OS")),"XP")>0 Then
+		InvokeApplication "C:\Program Files\Linn\Kinsky\Kinsky.exe"
+	Else
+		InvokeApplication "C:\Program Files (x86)\Linn\Kinsky\Kinsky.exe"
+	End If
+	
+	Do
+		Wait 1
+	Loop Until WpfWindow("Kinsky").Exist(1)
+End Sub
+
+'Browse media path in Kinsky
+Sub Kinsky_Goto (Media_Path)
+	WpfWindow("Kinsky").WpfButton("Home").Click		'Return to Home
+
+	arrPath = Split(Media_Path, "\")
+	For i=0 To UBound(arrPath)
+		'Keep waiting until item shown
+		tSelect = False
+		retry = 0
+		Do
+			For j=0 To WpfWindow("Kinsky").WpfList("Media List").GetItemsCount-1
+				WpfWindow("Kinsky").WpfList("Media List").Select j
+				If WpfWindow("Kinsky").WpfList("Media List").GetItem(j) = arrPath(i) Then
+					WpfWindow("Kinsky").WpfList("Media List").Type micReturn
+					Wait 1
+					tSelect = True
+					Exit For
+				End If
+			Next				
+
+			If Not tSelect Then
+				retry = retry+1
+				Wait 3
+			End If
+		Loop Until tSelect Or retry > 10
+
+		If retry > 10 Then
+			Reporter.ReportEvent micFail, "Kinsky_Goto", "Can't find item " & arrPath(i)
+		End If
+	Next
+End Sub
+
+'Play a media content in Kinsky
+Sub Kinsky_Play (Media_Name, Media_Type, PASS_FAIL)
+	Set MyClipboard=CreateObject("Mercury.Clipboard")
+	MyClipboard.Clear
+
+	WpfWindow("Kinsky").Maximize
+	'Define item object by name
+	Set MediaItem = WpfWindow("Kinsky").WpfObject("wpftypename:=object", "regexpwndtitle:=Kinsky", "text:=" & Media_Name)
+	If MediaItem.Exist(20) Then
+		MediaItem.Click 5,5,micRightBtn
+		WpfWindow("Kinsky").WpfMenu("WpfMenu").Select "Details"
+	
+		'Get item XML content
+		WpfWindow("Item Details:").Activate
+		WpfWindow("Item Details:").WpfObject("Copy to clipboard").Click
+		WpfWindow("Item Details:").Close
+	
+		WpfWindow("Kinsky").WpfButton("Resize").Click
+	
+		'Get media uri
+		detail = MyClipboard.GetText
+		mk1 = InStr(1, detail, "<res")
+		mk1 = InStr(mk1, detail, ">")+1
+		mk2 = InStr(mk1, detail, "</res>")
+		uri = Mid(detail, mk1, mk2-mk1)
+	
+		If Media_Type = "Picture" Then
+			Open_Web uri
+			imgSrc = Browser("Browser").Page("Picture browse").Image("Picture").GetROProperty("src")
+			bmpName="Kinsky" & Environment("PicNum") & ".bmp"
+			Environment("PicNum")=Environment("PicNum")+1
+			Browser("Browser").Page("Picture browse").Image("Picture").CaptureBitmap bmpName
+	
+			If imgSrc = uri Then
+				If PASS_FAIL = "PASS" Then
+					Reporter.ReportEvent micPass, "Kinsky_Play", Media_Type & " check", bmpName
+				ElseIf PASS_FAIL = "FAIL" Then
+					Reporter.ReportEvent micFail, "Kinsky_Play(FAIL)", Media_Type & " check", bmpName
+				End If
+			Else
+				If PASS_FAIL = "PASS" Then
+					Reporter.ReportEvent micFail, "Kinsky_Play", Media_Type & " check"
+				ElseIf PASS_FAIL = "FAIL" Then
+					Reporter.ReportEvent micPass, "Kinsky_Play(FAIL)", Media_Type & " check"
+				End If
+			End If
+			Browser("Browser").Close
+		Else
+			VLC_Play uri
+			Wait 5
+			
+			VLC_Title = Window("VLC 媒體播放器").GetROProperty("text")
+			If VLC_Title = uri & " - VLC 媒體播放器" Then
+				If PASS_FAIL = "PASS" Then
+					Reporter.ReportEvent micPass, "Kinsky_Play", Media_Type & " check"
+				ElseIf PASS_FAIL = "FAIL" Then
+					Reporter.ReportEvent micFail, "Kinsky_Play(FAIL)", Media_Type & " check"
+				End If
+			Else
+				If PASS_FAIL = "PASS" Then
+					Reporter.ReportEvent micFail, "Kinsky_Play", Media_Type & " check"
+				ElseIf PASS_FAIL = "FAIL" Then
+					Reporter.ReportEvent micPass, "Kinsky_Play(FAIL)", Media_Type & " check"
+				End If
+			End If
+		End If
+	Else
+		Reporter.ReportEvent micFail, "Kinsky_Play", Media_Type & " check. Item " & Media_Name & " not exists."
+		WpfWindow("Kinsky").WpfButton("Resize").Click
+	End If
+End Sub
+
+'Check media contents in Kinsky
+Sub Kinsky_Check (Condition, PASS_FAIL)
+   WpfWindow("Kinsky").Maximize
+	arrCon = Split(Condition, "=")
+	If arrCon(0) = "Count" Then
+		ItemCount = WpfWindow("Kinsky").WpfList("Media List").GetItemsCount
+		If ItemCount = CInt(arrCon(1)) Then
+			If PASS_FAIL = "PASS" Then
+				Reporter.ReportEvent micPass, "Kinsky_Check", Condition & vbCrLf & "Item count = " & ItemCount
+			ElseIf PASS_FAIL = "FAIL" Then
+				Reporter.ReportEvent micFail, "Kinsky_Check(FAIL)", Condition & vbCrLf & "Item count = " & ItemCount
+			End If
+		Else
+			If PASS_FAIL = "PASS" Then
+				Reporter.ReportEvent micFail, "Kinsky_Check", Condition & vbCrLf & "Item count = " & ItemCount
+			ElseIf PASS_FAIL = "FAIL" Then
+				Reporter.ReportEvent micPass, "Kinsky_Check(FAIL)", Condition & vbCrLf & "Item count = " & ItemCount
+			End If
+		End If
+	ElseIf arrCon(0) = "Name" Then
+		Set MediaItem = WpfWindow("Kinsky").WpfObject("wpftypename:=object", "regexpwndtitle:=Kinsky", "text:=" & arrCon(1))
+		If MediaItem.Exist(10) Then
+			If PASS_FAIL = "PASS" Then
+				Reporter.ReportEvent micPass, "Kinsky_Check", "Item " & arrCon(1) & "exists."
+			ElseIf PASS_FAIL = "FAIL" Then
+				Reporter.ReportEvent micFail, "Kinsky_Check(FAIL)", "Item " & arrCon(1) & "exists."
+			End If
+		Else
+			If PASS_FAIL = "PASS" Then
+				Reporter.ReportEvent micFail, "Kinsky_Check", "Item " & arrCon(1) & "not exists."
+			ElseIf PASS_FAIL = "FAIL" Then
+				Reporter.ReportEvent micPass, "Kinsky_Check(FAIL)", "Item " & arrCon(1) & " not exists."
+			End If	
+		End If
+	End If
+	WpfWindow("Kinsky").WpfButton("Resize").Click
+End Sub
+
+'====================TR-069 functions======================
+
+'Open while TR098 function
+Sub TR069_Report(ON_OFF)
+	If Lcase(ON_OFF)="on" Then
+		Environment("Report")=1
+	    TR069_Excel_Check
+	else
+		Environment("Report")=0	
+	End If
+End Sub
+
+'Start TR-069 ACS server
+Sub TR069_Server_Start
+	SystemUtil.Run "server069.exe", "", Environment("TR069_Path"),""
+End Sub
+
+'Connect to TR-069 ACS server and check status
+Sub TR069_Status_Chk (URL, Check_Text, Wati_Time, Retry_Times)
+	'Get HTML source from ACS server
+	Set WinHttpReq = CreateObject("WinHttp.WinHttpRequest.5.1")
+
+	
+	For i=0 To CInt(Retry_Times)
+		If i=CInt(Retry_Times) Then
+			Reporter.ReportEvent micFail,  "TR-069 status check", "Check TR-069 ACS server status"
+			Exit For
+		End If
+
+		WinHttpReq.Open "GET", URL, False
+		WinHttpReq.Send
+		Response = WinHttpReq.ResponseText
+		If InStr(1, Response, Check_Text) > 0 Then
+			Reporter.ReportEvent micPass, "TR-069 status check", "Check TR-069 ACS server status"
+			Exit For
+		Else
+			Wait CInt(Wati_Time)
+		End If		
+	Next
+End Sub
+
+'Send TR-069 command
+Sub TR069_Cmd (Cmd_Arr)
+	'Delete result file if it exists
+	Dim fso
+	Set fso = CreateObject("Scripting.FileSystemObject")
+	If (fso.FileExists(Environment("TR069_Path")  & "\TR069result.txt")) Then
+		Set ResultFile = fso.GetFile(Environment("TR069_Path")  & "\TR069result.txt")
+		ResultFile.Delete
+	End If
+
+	runCmd=Cmd_Arr(0)
+	For i=1 To UBound(Cmd_Arr)
+		If InStr(1,Cmd_Arr(i)," ")>0 Then
+			runCmd=runCmd & " " & Chr(34) & Cmd_Arr(i) & Chr(34)
+		Else
+			runCmd=runCmd & " " & Cmd_Arr(i)
+		End If
+
+		'Delete log file if it exists (for log path change)
+		If  InStr(1,Cmd_Arr(i),"sysLog=")=1 Or InStr(1,Cmd_Arr(i),"xmlLog=")=1 Then
+			logPath=Mid(Cmd_Arr(i), InStr(1, Cmd_Arr(i), "=")+1)
+			If fso.FileExists(logPath) Then
+				fso.DeleteFile(logPath)
+			End If
+		End If
+	Next
+	SystemUtil.Run "cmd069.exe", runCmd, Environment("TR069_Path"),""
+
+	'Get wati time from configuration file
+	Set ts = fso.OpenTextFile(Environment("TR069_Path") & "\setting.conf")
+	fileData = ts.ReadAll
+	mk1=InStr(1,fileData,"timeout=")+8
+	mk2=InStr(mk1,fileData,Chr(10))
+	TotalWait = CInt(Mid(fileData, mk1, mk2-mk1))
+
+	'Wati for result file
+	WaitResult =True
+	WaitTime = 0
+	Do 
+		If fso.FileExists(Environment("TR069_Path") & "\TR069result.txt") Then
+			WaitResult = False
+		Else
+			Wait 1
+			WaitTime = WaitTime +1
+			If WaitTime = TotalWait Then
+				WaitResult = False
+			End If
+		End If
+	Loop While WaitResult
+
+	If WaitTime = TotalWait Then
+		Reporter.ReportEvent micFail,  "TR-069 command", "Execute TR-069 command"
+		Window("TR069cmd").Activate
+		Window("TR069cmd").Type micCtrlDwn & "c" & micCtrlUp
+
+		If Window("TR069cmd").Exist(5) Then
+			Window("TR069cmd").Close
+		End If		
+	Else
+		'Expore file content to report file
+		Set ts = fso.OpenTextFile(Environment("TR069_Path") & "\TR069result.txt")
+		fileData = ts.ReadAll
+		Reporter.ReportEvent micDone,  "TR-069 command", fileData
+	End If
+End Sub
+
+'Search content in TR-069 result file
+'Cmd_Arr(0)=<File Path>, Cmd_Arr(1)=PASS/FAIL/OR, Cmd_Arr(2~n)=<Search Strimg>
+Sub TR069_Check(Cmd_Arr)
+	iCase=False
+
+	If Cmd_Arr(0)="" Then
+		Cmd_Arr(0)=Environment("TR069_Path") & "\TR069result.txt"
+	ElseIf InStr(1,Cmd_Arr(0),"IgnoreCase")=1 Then
+		iCase=True
+
+		If Cmd_Arr(0)="IgnoreCase" Then
+			Cmd_Arr(0)=Environment("TR069_Path") & "\TR069result.txt"
+		Else
+			Cmd_Arr(0)=Mid(Cmd_Arr(0), InStr(1,Cmd_Arr(0)," ")+1)
+		End If
+	End If
+
+	Set fso = CreateObject("Scripting.FileSystemObject")
+	If  fso.FileExists(Cmd_Arr(0)) Then
+		Set ts = fso.OpenTextFile(Cmd_Arr(0))
+		fileData = ts.ReadAll
+		ts.Close
+
+		bFound=True
+		bOR=False
+		ContentFound="Content found: " & Chr(10)
+		ContentNotFound="Content not found: " & Chr(10)
+		
+		For i=2 to UBound(Cmd_Arr)
+			If iCase=False Then
+				If InStr(1,fileData, Cmd_Arr(i))>0 Then
+					ContentFound = ContentFound & Cmd_Arr(i) & Chr(10)
+					bOR=True
+				Else
+					ContentNotFound=ContentNotFound & Cmd_Arr(i) & Chr(10)
+					bFound=False
+				End If
+			Else
+				If InStr(1,UCase(fileData), UCase(Cmd_Arr(i)))>0 Then
+					ContentFound = ContentFound & Cmd_Arr(i) & Chr(10)
+					bOR=True
+				Else
+					ContentNotFound=ContentNotFound & Cmd_Arr(i) & Chr(10)
+					bFound=False
+				End If
+			End If
+		Next
+		If Cmd_Arr(1)="PASS" Then
+			If bFound Then
+				Reporter.ReportEvent micPass, "TR069_Check", ContentFound
+			Else
+				Reporter.ReportEvent micFail, "TR069_Check", TR069_GetScript(Cmd_Arr(2)) & Chr(10) &  ContentNotFound & "Result: " & Chr(10) & fileData
+				If Environment("Report")=1 Then
+					TR069_Excel_Write(Cmd_Arr)
+				End If
+			End If
+		ElseIf Cmd_Arr(1)="FAIL" Then
+			If bFound Then
+				Reporter.ReportEvent micFail, "TR069_Check(FAIL)", TR069_GetScript(Cmd_Arr(2)) & Chr(10) & ContentFound & "Result: " & Chr(10) & fileData
+				If Environment("Report")=1 Then
+					TR069_Excel_Write(Cmd_Arr)
+				End If
+			Else
+				Reporter.ReportEvent micPass, "TR069_Check(FAIL)", ContentNotFound
+			End If
+		ElseIf Cmd_Arr(1)="OR" Then
+			If bOR Then
+				Reporter.ReportEvent micPass, "TR069_Check(OR)", ContentFound
+			Else
+				Reporter.ReportEvent micFail, "TR069_Check(OR)", TR069_GetScript(Cmd_Arr(2)) & Chr(10) & ContentNotFound & "Result: " & Chr(10) & fileData
+				If Environment("Report")=1 Then
+					TR069_Excel_Write(Cmd_Arr)
+				End If
+			End If	
+		End If
+	Else
+		Reporter.ReportEvent micFail, "TR069_Check", Cmd_Arr(0) & "file not found"
+		
+		Dim Cmd_split(2)
+		
+		Cmd_split(0)=" "
+		Cmd_split(1)=" "
+		Cmd_split(2)=" "
+		
+		For i=2 to UBound(Cmd_Arr)
+			Cmd_split(2)=Cmd_split(2) & "," & Cmd_Arr(i)
+		Next
+		 
+		If Environment("Report")=1 Then
+			TR069_Excel_Write(Cmd_Arr)
+		End If
+	End If
+End Sub
+
+Sub TR069_Excel_Write(Cmd)
+	iCase=False
+	Content=""
+	'Pass Fail Compare Found or not found
+	bFound=True
+	bOR=False
+	qflag = false
+
+	'i=2  Check One
+	'i>2,Check more than one
+ 	For i=2 to Ubound(Cmd)
+
+		'Analysis Report Path
+
+		ContentFound=""
+		ContentNotFound=""
+
+	   Set fso = CreateObject("Scripting.FileSystemObject")
+		If fso.FileExists("C:\ReportPath.txt") Then
+			Set rl = fso.OpenTextFile("C:\ReportPath.txt")
+			Do Until rl.AtEndOfStream
+				strLine = rl.ReadLine
+				If Mid(strLine, 1, InStr(1, strLine, "=")) = "ReportPath=" Then
+					Excel_Path = Mid(strLine, InStr(1, strLine, "=") + 1)
+				End If
+			Loop
+			rl.Close
+		Else
+			Excel_Path="F:\QTPtest\"
+		End If
+		'Get CPE return from cmd069
+		If  fso.FileExists(Environment("TR069_Path") & "\TR069result.txt") Then
+			Set ts = fso.OpenTextFile(Environment("TR069_Path") & "\TR069result.txt")
+			fileData = ts.ReadAll
+			ts.Close
+		Else
+			fileData = "CPE no response"
+		End if
+
+		If iCase=False Then
+				If InStr(1,fileData, Cmd(i))>0 Then
+					ContentFound = ContentFound & Cmd(i) & Chr(10)
+					bOR=True
+				Else
+					ContentNotFound=ContentNotFound & Cmd(i) & Chr(10)
+					bFound=False
+				End If
+		Else
+				If InStr(1,UCase(fileData), UCase(Cmd(i)))>0 Then
+					ContentFound = ContentFound & Cmd(i) & Chr(10)
+					bOR=True
+				Else
+					ContentNotFound=ContentNotFound & Cmd(i) & Chr(10)
+					bFound=False
+				End If
+		End If
+		If Cmd(1)="PASS" Then
+			If bFound Then
+			Else
+				If qflag Then
+					Content=Content & ContentNotFound
+				else
+					Content=Content & "Content Not Found" & vbcrlf & ContentNotFound
+					qflag = true
+				End If
+			End If
+		ElseIf Cmd(1)="FAIL" Then
+			If bFound Then
+				If qflag Then
+					Content=Content &  ContentFound
+				Else
+					Content=Content & "Content found" & vbcrlf &   ContentFound
+					qflag = true
+				End If
+			End If
+		ElseIf Cmd(1)="OR" Then
+			If bOR Then
+			Else
+				If qflag Then
+					Content=Content & ContentNotFound
+				Else
+					Content=Content & "Content Not Found" & vbcrlf & ContentNotFound
+					qflag = true
+				End If
+			End If	
+		End If
+
+'		'Check found or not found
+'		If len(ContentFound)- len("Content found: ")>1Then
+'			Content=Content & ContentFound
+'		End If
+'		If len(ContentNotFound)-len("Content not found: ")>1Then
+'			Content=Content & ContentNotFound
+'		End If
+
+		'Excel Write
+		Set objExcel = CreateObject("Excel.Application")
+		objExcel.Visible = False
+		Set objWorkBook = objExcel.Workbooks.Open(Excel_Path & "TR069_Report.xlsx")
+		Set objWorkSheet = objWorkBook.WorkSheets("TR069")
+		'Check Insert Point
+		k=1
+		'Insert new or change exist rule
+		Do 
+			k=k+1
+			X=objWorkSheet.Range("B" & k).Value
+		Loop Until X = "" or X=Environment("ActionName")
+		If i=ubound(Cmd) Then
+			Val=""
+			If X=Environment("ActionName")  Then
+			'If objWorkSheet.Range("B" & i).Value=Environment("ActionName")  Then
+				Val=objWorkSheet.Range("G" & k)
+				Check_Index=""
+				For j=1 to 20
+					If Instr(Val,j & "#") Then
+						Check_Index=j
+					End If
+				Next
+				Check_Index=Check_Index+1
+	
+				'Get element and add behind
+				If Instr(Val,TR069_GetScript(Cmd(i)))>0 Then
+					Val=Val  & Check_Index & "#" & "Script has exist" & vbcrlf
+				elseif fileData = "TR069result.txt not Found" then
+					Val=Val  & Check_Index & "#ERROR at " & Cmd(i) &vbcrlf
+				Else
+					'Val=Val & vbcrlf  & Check_Index & "#" & TR069_GetScript(Cmd)	
+					Val=Val  & Check_Index & "#" & TR069_GetScript(Cmd(i))
+				End If
+				objWorkSheet.Range("G" & k).Value=Val
+				Val=objWorkSheet.Range("C" & k)
+				If Instr(TR069_GetScript(Cmd(i)),"GetParameterAttributes")>0 Then
+					Val=Val & Check_Index & "# GPA Fail" & vbcrlf
+				Else
+					'Val=Val & vbcrlf & Check_Index & "#" & fileData
+					Val=Val & Check_Index & "#" & Trim( fileData) & vbcrlf
+				End If
+				objWorkSheet.Range("C" & k).Value=Val
+				Val=objWorkSheet.Range("D" & k)
+				Val=Val & vbcrlf  & Check_Index & "#" & Cmd(i)
+				objWorkSheet.Range("D" & k).Value=Val
+				Val=objWorkSheet.Range("E" & k)
+				Val=Val & vbcrlf  & Check_Index & "#" & Content
+				objWorkSheet.Range("E" & k).Value=Val
+			Else
+				'Set new element
+				objWorkSheet.Range("A" & k).Value=Environment("TestName")
+				objWorkSheet.Range("B" & k).Value=Environment("ActionName")
+				If Instr(TR069_GetScript(Cmd(i)),"GetParameterAttributes")>0 Then
+					objWorkSheet.Range("C" & k).Value="1# GPA Fail" & vbcrlf
+				Else
+					objWorkSheet.Range("C" & k).Value="1#" & Trim( fileData) & vbcrlf
+				End If
+				objWorkSheet.Range("D" & k).Value="1#" & Cmd(i)			
+				objWorkSheet.Range("E" & k).Value= "1#" & Content
+				objWorkSheet.Range("F" & k).Value="FAIL"
+				If fileData = "CPE no response" Then
+					objWorkSheet.Range("G" & k).Value="1#ERROR at " &Cmd(i) & vbcrlf
+				Else
+					objWorkSheet.Range("G" & k).Value="1#" & TR069_GetScript(Cmd(i))
+				End If
+			End If
+		End If
+		
+		objWorkBook.Save
+		objWorkBook.Close
+		objExcel.Quit
+		Set objWorkBook = Nothing
+		Set objWorkSheet = Nothing
+		Set objExcel = Nothing
+	Next
+End Sub
+
+Sub TR069_Excel_Check()
+
+'Initial TR069 Report structure
+   'Analysis Report Path
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    If fso.FileExists("C:\ReportPath.txt") Then
+        Set rl = fso.OpenTextFile("C:\ReportPath.txt")
+        Do Until rl.AtEndOfStream
+            strLine = rl.ReadLine
+            If Mid(strLine, 1, InStr(1, strLine, "=")) = "ReportPath=" Then
+                Excel_Path = Mid(strLine, InStr(1, strLine, "=") + 1)
+            End If
+        Loop
+        rl.Close
+	Else
+		Excel_Path="F:\QTPtest\"
+    End If
+
+	If fso.FileExists(Excel_Path & "TR069_Report.xlsx") Then
+	Else
+		'If not exist,add new Report excel
+		Create_Excel Excel_Path & "TR069_Report.xlsx","TR069"
+		
+		Set objExcel = CreateObject("Excel.Application")
+		objExcel.Visible = False
+		Set objWorkBook = objExcel.Workbooks.Open(Excel_Path & "TR069_Report.xlsx")
+		Set objWorkSheet = objWorkBook.WorkSheets("TR069")
+
+		'Table Style
+		Const xlSrcRange = 1
+		objExcel.ActiveSheet.ListObjects.add (xlSrcRange,objExcel.Range("A1:H1500"),,XlYes).Name="Test"
+        objExcel.ActiveSheet.ListObjects("Test").TableStyle = "TableStyleMedium11"
+
+		'Column width
+		objWorkSheet.Range("A:A").ColumnWidth = 13
+		objWorkSheet.Range("B:B").ColumnWidth = 25
+		objWorkSheet.Range("C:C").ColumnWidth = 25
+		objWorkSheet.Range("D:D").ColumnWidth =25
+		objWorkSheet.Range("E:E").ColumnWidth = 75
+		objWorkSheet.Range("F:F").ColumnWidth = 13
+		objWorkSheet.Range("G:G").ColumnWidth =85
+
+		'FreezePanes
+		objWorkSheet.Range("A2").Select
+		objExcel.ActiveWindow.FreezePanes = True
+
+
+		'Wrap Text
+		 With objWorkSheet.Range("A1:H1500")
+			.WrapText = True
+			.Orientation = 0
+			.AddIndent = False
+			.IndentLevel = 0
+			.ShrinkToFit = False
+			.MergeCells = False
+		End With
+
+		objWorkBook.Save
+		objWorkBook.Close
+		objExcel.Quit
+		Set objWorkBook = Nothing
+		Set objWorkSheet = Nothing
+		Set objExcel = Nothing
+
+		'Initial Excel
+		Excel_Write Excel_Path & "TR069_Report.xlsx","TR069","A1","Test"
+		Excel_Write Excel_Path & "TR069_Report.xlsx","TR069","B1","Action & ID"
+		Excel_Write Excel_Path & "TR069_Report.xlsx","TR069","C1","Result"
+		Excel_Write Excel_Path & "TR069_Report.xlsx","TR069","D1","Expectation"
+		Excel_Write Excel_Path & "TR069_Report.xlsx","TR069","E1","Detail between Expectation & Result"
+		Excel_Write Excel_Path & "TR069_Report.xlsx","TR069","F1","Fail"
+		Excel_Write Excel_Path & "TR069_Report.xlsx","TR069","G1","Original Script"
+        Excel_Write Excel_Path & "TR069_Report.xlsx","TR069","H1","  "
+		Excel_Write Excel_Path & "TR069_Report.xlsx","TR069","J1","=CONCATENATE(""Fail sum = "",COUNTIF(F:F, ""FAIL"")-1)"
+
+
+		'Cancel Auto correct
+		Set objExcel = CreateObject("Excel.Application")
+		objExcel.Visible = False
+		Set objWorkBook = objExcel.Workbooks.Open(Excel_Path & "TR069_Report.xlsx")
+		Set objWorkSheet = objWorkBook.WorkSheets("TR069")
+		
+		objWorkSheet.Range("H2").Select
+		objExcel.AutoCorrect.AutoFillFormulasInLists = False
+
+		objWorkBook.Save
+		objWorkBook.Close
+		objExcel.Quit
+		Set objWorkBook = Nothing
+		Set objWorkSheet = Nothing
+		Set objExcel = Nothing
+	End If
+	Set fso = Nothing
+End Sub
+
+Function GetScript(Cmd)
+	Set WshShell = CreateObject("WScript.Shell")	
+	tmp2=Environment("TestName")
+	FileName=tmp2 & ".usr"
+	FilePath=WshShell.CurrentDirectory & "\" & FileName
+
+	Set fso = CreateObject("Scripting.FileSystemObject")
+	If fso.FileExists(FilePath) Then
+			Set fa = fso.OpenTextFile(FilePath)
+			ContentA = fa.ReadAll
+			fa.Close
+	Else
+	End If
+
+	tmp2=Environment("ActionName")
+
+	ContentA=mid(ContentA,Instr(ContentA,tmp2))
+	ContentA=mid(ContentA,1,instr(ContentA,"\Script.mts")-1)
+	ContentA=mid(ContentA,Instr(ContentA,"=")+1)
+	ActionPath=WshShell.CurrentDirectory & "\" & ContentA & "\Script.mts"
+
+	If fso.FileExists(ActionPath) Then
+			Set fa = fso.OpenTextFile(ActionPath)
+			ContentA = fa.ReadAll
+			fa.Close
+	Else
+	End If
+
+	tmp=split(ContentA,vbcrlf)
+	ContentB=""
+	For i=0 to Ubound(tmp)
+		If Instr(tmp(i),Cmd) Then
+			ContentB=ContentB & tmp(i) & vbcrlf
+		End If
+	Next
+	If ContentB="" Then
+		ContentB=ContentA
+	End If
+	GetScript=ContentB
+End Function
+
+Function TR069_GetScript(Cmd)
+
+   'Check Current Directory
+	tmp2=Environment("TestName")
+	FileName=tmp2 & ".usr"
+	FilePath=Environment("TestDir") & "\" & FileName
+
+	Set fso = CreateObject("Scripting.FileSystemObject")
+	If fso.FileExists(FilePath) Then
+			Set fa = fso.OpenTextFile(FilePath)
+			ContentA = fa.ReadAll
+			fa.Close
+	Else
+	End If
+
+	ContentA=mid(ContentA,Instr(ContentA,Environment("ActionName")))
+	ContentA=mid(ContentA,1,instr(ContentA,"\Script.mts")-1)
+	ContentA=mid(ContentA,Instr(ContentA,"=")+1)
+	ActionPath=Environment("TestDir") & "\" & ContentA & "\Script.mts"
+
+	If fso.FileExists(ActionPath) Then
+			Set fa = fso.OpenTextFile(ActionPath)
+			ContentA = fa.ReadAll
+			fa.Close
+	Else
+	End If
+	
+	tmp=split(ContentA,vbcrlf)
+	ContentB=""
+	For i=0 to Ubound(tmp)
+		If Instr(tmp(i),"Value:")>0 and instr(Cmd,"Value:")>0 Then
+			j=i
+			ContentB=ContentB  & tmp(i) & vbcrlf
+			For k=0 to 2
+				Do
+					j=j-1
+				Loop until tmp(j)<>"" or j=1
+				ContentB= tmp(j) & vbcrlf & ContentB
+			Next
+		Elseif Instr(tmp(i),Cmd) then
+			j=i
+			Do 
+				j=j-1
+			Loop until tmp(j)<>""
+			ContentB=ContentB & tmp(j) & vbcrlf & tmp(i) & vbcrlf
+		End If
+	Next
+	If ContentB="" Then
+		'ContentB=Trim(ContentA)
+		ContentB="Can't found " & Cmd & " in script"
+	End If
+	TR069_GetScript=ContentB
+End Function
+
+'Stop TR-069 ACS server
+Sub TR069_Server_Stop
+	Close_Process "server069.exe"
+End Sub
+
+'Check periodic inform interval time
+Sub TR069_Inform_Interval_Check(Interval, PASS_FAIL)
+	'Get current system information from server
+	TR069_Cmd Array("sys", "info")
+	
+	'Get log name
+	Set fso = CreateObject("Scripting.FileSystemObject")
+	Set rl=fso.OpenTextFile(Environment("TR069_Path") & "\TR069result.txt")
+	Do Until rl.AtEndOfStream
+		strLine=rl.ReadLine
+		If InStr(1, strLine, "Execute log:") > 0 Then
+			logFile = Mid(strLine, 14)
+		End If
+	Loop
+	rl.Close
+
+	'Add TR-069 path if log path is default value
+	If InStr(1, logFile, ":\") = 0 Then
+		logFile = Environment("TR069_Path") & "\" & logFile
+	End If
+	
+	'Get last 2 periodic inform time form log file
+	If fso.FileExists(logFile) Then
+		Set rl=fso.OpenTextFile(logFile)
+		Do Until rl.AtEndOfStream
+			strLine=rl.ReadLine
+			If IsDate(strLine) Then
+				dateTemp = CDate(strLine)
+			End If
+			If InStr(1, strLine, "2 PERIODIC") > 0 Then
+				dateB = dateA
+				dateA = dateTemp
+			End If
+		Loop
+		rl.Close
+
+		'Check time interval
+		If (DateDiff("s", dateB, dateA) > Interval - (Interval*0.1)) And (DateDiff("s", dateB, dateA) < Interval + (Interval*0.1)) Then
+			If PASS_FAIL = "PASS" Then
+				Reporter.ReportEvent micPass, "TR069_Inform_Interval_Check", "Inform interval is " & DateDiff("s", dateB, dateA) &" seconds."
+			ElseIf PASS_FAIL = "FAIL" Then
+				Reporter.ReportEvent micFail,"TR069_Inform_Interval_Check(FAIL)", "Inform interval is " & DateDiff("s", dateB, dateA) &" seconds."
+			End If
+		Else
+			If PASS_FAIL = "PASS" Then				
+				Reporter.ReportEvent micFail, "TR069_Inform_Interval_Check", "Inform interval is " & DateDiff("s", dateB, dateA) &" seconds."
+			ElseIf PASS_FAIL = "FAIL" Then
+				Reporter.ReportEvent micPass, "TR069_Inform_Interval_Check(FAIL)", "Inform interval is " & DateDiff("s", dateB, dateA) &" seconds."
+			End If			
+		End If
+	Else
+		Reporter.ReportEvent micFail, "TR069_Inform_Interval_Check", "Log file not exists."
+	End If
+End Sub
+
+Sub TR069_Condition_Check(Check_Parameter, Label, Condition)
+	'Search parameter and value
+	bParaFound = False
+	Set fso = CreateObject("Scripting.FileSystemObject")
+	Dim Condition_split(2)
+	Condition_split(0)=" "
+	Condition_split(1)=" "
+	Condition_split(2)=Condition
+
+	If  fso.FileExists(Environment("TR069_Path") & "\TR069result.txt") Then
+		Set rl=fso.OpenTextFile(Environment("TR069_Path") & "\TR069result.txt")
+		Do Until rl.AtEndOfStream
+			strLine=rl.ReadLine
+			If InStr(1, strLine, Check_Parameter) > 0 Then
+				bParaFound = True
+			End If
+	
+			If bParaFound = True And InStr(1, strLine, Label) > 0 Then
+				strValue = Mid(strLine, InStr(1, strLine, ":") + 1)
+				Exit Do
+			End If
+		Loop
+		rl.Close
+
+		If strValue="" and Instr(1, Condition, "Empty") <=0 Then
+			Set fso = CreateObject("Scripting.FileSystemObject")
+			Set ts = fso.OpenTextFile(Environment("TR069_Path") & "\TR069result.txt")
+			fileData = ts.ReadAll
+			Reporter.ReportEvent micFail, "TR069_Condition_Check",TR069_GetScript(Condition) & Chr(10) & fileData
+			If Environment("Report")=1 Then
+				TR069_Excel_Write(Condition_split)
+			End If
+			ts.Close
+		Else
+		
+			If InStr(1, Condition, ">=") = 1 Then
+				If Clng(strValue) >= Clng(Mid(Condition, 3)) Then
+					Reporter.ReportEvent micPass, "TR069_Condition_Check", strValue & Condition
+				Else
+					Reporter.ReportEvent micFail,  "TR069_Condition_Check",TR069_GetScript(Condition) & Chr(10) & strValue & " not " & Condition
+					If Environment("Report")=1 Then
+						TR069_Excel_Write(Condition_split)
+					End if
+				End If
+			ElseIf InStr(1, Condition, "<=") = 1 Then
+				If Clng(strValue) <= Clng(Mid(Condition, 3)) Then
+					Reporter.ReportEvent micPass, "TR069_Condition_Check", strValue & Condition
+				Else
+					Reporter.ReportEvent micFail,"TR069_Condition_Check",TR069_GetScript(Condition) & Chr(10) & strValue & " not " & Condition
+					If Environment("Report")=1 Then
+						TR069_Excel_Write(Condition_split)
+					End if
+				End If
+			ElseIf InStr(1, Condition, "<>") = 1 Then
+				If Clng(strValue) <> Clng(Mid(Condition, 3)) Then
+					Reporter.ReportEvent micPass, "TR069_Condition_Check", strValue & Condition
+				Else
+					Reporter.ReportEvent micFail, "TR069_Condition_Check",TR069_GetScript(Condition) & Chr(10) & strValue & " not " & Condition
+					If Environment("Report")=1 Then
+						TR069_Excel_Write(Condition_split)
+					End if
+				End If
+			ElseIf InStr(1, Condition, ">") = 1 Then
+				If Clng(strValue) > Clng(Mid(Condition, 2)) Then
+					Reporter.ReportEvent micPass, "TR069_Condition_Check", strValue & Condition
+				Else
+					Reporter.ReportEvent micFail,"TR069_Condition_Check", TR069_GetScript(Condition) & Chr(10) & strValue & " is not " & Condition
+					If Environment("Report")=1 Then
+						TR069_Excel_Write(Condition_split)
+					End if
+				End If
+			ElseIf InStr(1, Condition, "<") = 1 Then
+				If Clng(strValue) < Clng(Mid(Condition, 2)) Then
+					Reporter.ReportEvent micPass, "TR069_Condition_Check", strValue & Condition
+				Else
+					Reporter.ReportEvent micFail, "TR069_Condition_Check",TR069_GetScript(Condition) & Chr(10) & strValue & " is not " & Condition
+					If Environment("Report")=1 Then
+						TR069_Excel_Write(Condition_split)
+					End if
+				End If
+			ElseIf InStr(1, Condition, "=") = 1 Then
+				If Trim(strValue) = Mid(Condition, 2) Then
+					Reporter.ReportEvent micPass, "TR069_Condition_Check", strValue & Condition
+				Else
+					Reporter.ReportEvent micFail,"TR069_Condition_Check", TR069_GetScript(Condition) & Chr(10) & strValue & " is not " & Condition
+					If Environment("Report")=1 Then
+						TR069_Excel_Write(Condition_split)
+					End if
+				End If
+			ElseIf InStr(1, Condition, "~") > 0 Then
+				If Clng(strValue) >= Clng(Mid(Condition, 1, InStr(1, Condition, "~") - 1)) And Clng(strValue) <= Clng(Mid(Condition, InStr(1, Condition, "~") + 1)) Then
+					Reporter.ReportEvent micPass, "TR069_Condition_Check", strValue & " is between " & Condition
+				Else
+					Reporter.ReportEvent micFail,"TR069_Condition_Check",TR069_GetScript(Condition) & Chr(10) & strValue & " is not  between " & Condition
+					If Environment("Report")=1 Then
+						TR069_Excel_Write(Condition_split)
+					End if
+				End If
+			ElseIf Instr(1, Condition, "IsEmpty") > 0 Then
+				If Trim(strValue)="" Then
+					Reporter.ReportEvent micPass, "TR069_Condition_Check", "get an empty value"
+				Else
+					Reporter.ReportEvent micFail,"TR069_Condition_Check",TR069_GetScript(Condition) & Chr(10) & strValue & " is not an empty value"
+					If Environment("Report")=1 Then
+						TR069_Excel_Write(Condition_split)
+					End if
+				End If
+			ElseIf Instr(1, Condition, "NoEmpty") > 0 Then
+				If Trim(strValue)<>"" Then
+					Reporter.ReportEvent micPass, "TR069_Condition_Check", strValue & " is not an empty value"
+				Else
+					Reporter.ReportEvent micFail,"TR069_Condition_Check",TR069_GetScript(Condition) & Chr(10) & strValue & " should not get an empty value"
+					If Environment("Report")=1 Then
+						TR069_Excel_Write(Condition_split)
+					End if
+				End If
+			End If
+		End If
+	Else
+		Reporter.ReportEvent micFail, "TR069_Condition_Check",TR069_GetScript(Condition) & Chr(10) & "Result file not exists"
+		If Environment("Report")=1 Then
+			TR069_Excel_Write(Condition_split)
+		End if	
+	End If
+End Sub
+
+Function TR069_Check_Return(Check_Parameter, Label)
+   TR069_Excel_Check
+	bParaFound = False
+	Set fso = CreateObject("Scripting.FileSystemObject")
+	If  fso.FileExists(Environment("TR069_Path") & "\TR069result.txt") Then
+		Set rl=fso.OpenTextFile(Environment("TR069_Path") & "\TR069result.txt")
+		Do Until rl.AtEndOfStream
+			strLine=rl.ReadLine
+	
+			If InStr(1, strLine, Check_Parameter) > 0 Then
+				bParaFound = True
+			End If
+	
+			If bParaFound = True And InStr(1, strLine, Label) > 0 Then
+				strValue = Mid(strLine, InStr(1, strLine, ":") + 1)
+				Exit Do
+			End If
+		Loop
+		rl.Close
+		TR069_Check_Return=strValue
+	Else
+		Reporter.ReportEvent micFail,"TR069_Condition_Check", "Result file not exists"
+	End If
+End Function
+
+'Check last parameter name and value
+Sub TR069_Check_Last(Check_Parameter, Check_Value, PASS_FAIL)
+   TR069_Excel_Check
+	'Get parameter root
+	arrParameter = Split(Check_Parameter, ".")
+	arrValue = Split(Check_Value, ":")
+
+	Set fso = CreateObject("Scripting.FileSystemObject")
+	If  fso.FileExists(Environment("TR069_Path") & "\TR069result.txt") Then
+		Set rl=fso.OpenTextFile(Environment("TR069_Path") & "\TR069result.txt")
+		Do Until rl.AtEndOfStream
+			strLine=rl.ReadLine
+
+			If Check_Parameter <> "" Then
+				If InStr(1, strLine, arrParameter(0)) > 0 Then
+					LastParameter = strLine	'Update last parameter
+					Values = ""	'Reset values
+				Else
+					Values = Values & strLine
+				End If
+			Else
+				If Trim(strLine) <> "" And InStr(1,strLine,arrValue(0))>0 Then
+					Values = strLine
+				End If
+			End If
+		Loop
+		rl.Close
+
+		bParaCheck = False
+		If Check_Parameter <> "" And Trim(LastParameter) = Check_Parameter Then
+			bParaCheck = True
+		ElseIf Check_Parameter = "" Then
+			bParaCheck = True
+		End If
+		
+		If bParaCheck = True And InStr(1, Values, Check_Value) > 0 Then
+			If PASS_FAIL = "PASS" Then
+				Reporter.ReportEvent micPass, "TR069_Check_Last", "Last parameter is " & LastParameter & vbCrLf & Values
+			ElseIf PASS_FAIL = "FAIL" Then
+				Reporter.ReportEvent micFail,"TR069_Check_Last(FAIL)", "Last parameter is " & LastParameter & vbCrLf & Values
+				If Environment("Report")=1 Then
+					TR069_Excel_Write(Check_Parameter)
+				End if
+			End If
+		Else
+			If PASS_FAIL = "PASS" Then
+				Reporter.ReportEvent micFail,"TR069_Check_Last", "Last parameter is " & LastParameter & vbCrLf & Values
+				If Environment("Report")=1 Then
+					TR069_Excel_Write(Check_Parameter)
+				End if
+			ElseIf PASS_FAIL = "FAIL" Then
+				Reporter.ReportEvent micPass, "TR069_Check_Last(FAIL)", "Last parameter is " & LastParameter & vbCrLf & Values
+			End If	
+		End If
+	Else
+		Reporter.ReportEvent micFail,  "TR069_Check_Last", "TR-069 result file not exists"
+		If Environment("Report")=1 Then
+			TR069_Excel_Write(Check_Parameter)
+		End if
+	End If
+End Sub
+
+'Check ScheduleInform interval time
+Sub TR069_ScheduleInform_Check(Interval, PASS_FAIL)
+	'Get current system information from server
+	TR069_Cmd Array("sys", "info")
+	
+	'Get log name
+	Set fso = CreateObject("Scripting.FileSystemObject")
+	Set rl=fso.OpenTextFile(Environment("TR069_Path") & "\TR069result.txt")
+	Do Until rl.AtEndOfStream
+		strLine=rl.ReadLine
+		If InStr(1, strLine, "Execute log:") > 0 Then
+			logFile = Mid(strLine, 14)
+		End If
+	Loop
+	rl.Close
+
+	'Add TR-069 path if log path is default value
+	If InStr(1, logFile, ":\") = 0 Then
+		logFile = Environment("TR069_Path") & "\" & logFile
+	End If
+	
+	'Get last 2 periodic inform time form log file
+	ScheduleOn = False
+	If fso.FileExists(logFile) Then
+		Set rl=fso.OpenTextFile(logFile)
+		Do Until rl.AtEndOfStream
+			strLine=rl.ReadLine
+			If IsDate(strLine) Then
+				dateTemp = CDate(strLine)
+			End If
+			If InStr(1, strLine, "[ScheduleInform]") > 0 Then
+				dateRes = dateTemp
+				ScheduleOn = True
+			End If
+			If InStr(1, strLine, "M ScheduleInform") > 0 And ScheduleOn = True Then
+				dateInform = dateTemp
+				Exit Do
+			End If
+		Loop
+		rl.Close
+
+		If dateRes = "" Then
+			Reporter.ReportEvent micFail, "TR069_ScheduleInform_Check", "ScheduleInform response is not found."
+		ElseIf dateInform = "" Then
+			Reporter.ReportEvent micFail, "TR069_ScheduleInform_Check", "M ScheduleInform is not found."
+		'Check time interval
+		ElseIf (DateDiff("s", dateRes, dateInform) > Interval - (Interval*0.1)) And (DateDiff("s", dateRes, dateInform) < Interval + (Interval*0.1)) Then
+			If PASS_FAIL = "PASS" Then
+				Reporter.ReportEvent micPass, "TR069_ScheduleInform_Check", "ScheduleInform sent after " & DateDiff("s", dateRes, dateInform) &" seconds."
+			ElseIf PASS_FAIL = "FAIL" Then
+				Reporter.ReportEvent micFail, "TR069_ScheduleInform_Check(FAIL)", "ScheduleInform sent after " & DateDiff("s", dateRes, dateInform) &" seconds."
+			End If
+		Else
+			If PASS_FAIL = "PASS" Then				
+				Reporter.ReportEvent micFail, "TR069_ScheduleInform_Check", "ScheduleInform sent after " & DateDiff("s", dateRes, dateInform) &" seconds."
+			ElseIf PASS_FAIL = "FAIL" Then
+				Reporter.ReportEvent micPass, "TR069_ScheduleInform_Check(FAIL)", "ScheduleInform sent after " & DateDiff("s", dateRes, dateInform) &" seconds."
+			End If			
+		End If
+	Else
+		Reporter.ReportEvent micFail, "TR069_ScheduleInform_Check", "Log file not exists."
+	End If
+End Sub
+
+'Check log interval from TR-069 CPE log file
+Sub TR069_Log_Interval_Check(LogFile, CheckLog, Interval, PASS_FAIL)
+	Set fso = CreateObject("Scripting.FileSystemObject")
+	If fso.FileExists(logFile) Then
+		Set rl=fso.OpenTextFile("C:\Test.log")
+		If InStr(1, CheckLog, "|") > 0 Then
+			arrCheckLog = Split(CheckLog, "|")
+			Do Until rl.AtEndOfStream
+				strLine=rl.ReadLine
+				arrLine = Split(strLine, " ")
+				dateTemp = CDate(arrLine(0) & " " & arrLine(2) & " " & arrLine(3))	'Jan  1 00:00:11
+	
+				If InStr(1, strLine, arrCheckLog(0)) > 0 Then
+					dateA = dateTemp
+				ElseIf InStr(1, strLine, arrCheckLog(1)) > 0 Then
+					dateB = dateTemp
+					Exit Do
+				End If
+			Loop
+		Else
+			Do Until rl.AtEndOfStream
+				strLine=rl.ReadLine
+				arrLine = Split(strLine, " ")
+				dateTemp = CDate(arrLine(0) & " " & arrLine(2) & " " & arrLine(3))	'Jan  1 00:00:11
+				If InStr(1, strLine, CheckLog1) > 0 Then
+					dateA = dateB
+					dateB = dateTemp
+				End If
+			Loop
+		End If
+		rl.Close
+
+		'Check time interval
+		If (DateDiff("s", dateA, dateB) > Interval - (Interval*0.1)) And (DateDiff("s", dateA, dateB) < Interval + (Interval*0.1)) Then
+			If PASS_FAIL = "PASS" Then
+				Reporter.ReportEvent micPass, "TR069_Log_Check: " & CheckLog, "Logs interval is " & DateDiff("s", dateA, dateB) &" seconds."
+			ElseIf PASS_FAIL = "FAIL" Then
+				Reporter.ReportEvent micFail, "TR069_Log_Check(FAIL): " & CheckLog, "Logs interval is " & DateDiff("s", dateA, dateB) &" seconds."
+			End If
+		Else
+			If PASS_FAIL = "PASS" Then				
+				Reporter.ReportEvent micFail, "TR069_Log_Check: " & CheckLog, "Logs interval is " & DateDiff("s", dateA, dateB) &" seconds."
+			ElseIf PASS_FAIL = "FAIL" Then
+				Reporter.ReportEvent micPass, "TR069_Log_Check(FAIL): " & CheckLog, "Logs interval is " & DateDiff("s", dateA, dateB) &" seconds."
+			End If			
+		End If
+	Else
+		Reporter.ReportEvent micFail, "TR069_Inform_Interval_Check", "Log file not exists."
+	End If
+End Sub
+
+Function TR069_Object_Num_Reutrn(Check_Parameter)
+	Num="0"
+	x=Len(Check_Parameter)
+	Set fso = CreateObject("Scripting.FileSystemObject")
+	If  fso.FileExists(Environment("TR069_Path") & "\TR069result.txt") Then
+		Set rl=fso.OpenTextFile(Environment("TR069_Path") & "\TR069result.txt")
+		Do Until rl.AtEndOfStream
+			strLine=rl.ReadLine
+			If InStr(1, strLine, Check_Parameter) > 0 Then
+				Num=Mid(strLine, x+1 , InStr(x+1, strLine, ".")-x-1)
+			End If							
+		Loop
+	End If
+	TR069_Object_Num_Reutrn=Num
+End Function
+
+'====================TR-064 functions======================
+
+'Send a TR-064 request
+'Cmd_Arr(0)=<Protocol>, Cmd_Arr(1)=<Service type>, Cmd_Arr(2)=<Action>, Cmd_Arr(3~n)=<Argument...>
+Sub TR064(Cmd_Arr)
+    If UCASE(Cmd_Arr(0))="HTTP" Then
+        protocol="0"
+    ElseIf UCASE(Cmd_Arr(0))="HTTPS" Then
+        protocol="1"
+    End If
+
+	ServiceType=Cmd_Arr(1)
+	Command=Cmd_Arr(2)
+	SetValue=Cmd_Arr(3)
+	For i=4 to UBound(Cmd_Arr)
+		If Cmd_Arr(i)<>"" Then
+			SetValue=SetValue & ";;" & Cmd_Arr(i)
+		End If
+	Next
+
+	Set MyClipboard=CreateObject("Mercury.Clipboard")
+	MyClipboard.Clear
+
+	SystemUtil.Run "TR064Utility.exe", protocol & " " & ServiceType & " " & Command & " " & SetValue, Environment("Tools_Path") & "\TR064\",""
+
+	waitTime=120
+	runTime=0
+	Do 
+		bWindow=Window("TR064 Console").Exist(1)
+		runTime=runTime+1
+		If bWindow=True And runTime>=waitTime Then			
+			Window("TR064 Console").Close
+		End If
+	Loop While bWindow=True
+
+	If runTime>=waitTime Then
+		Reporter.ReportEvent micFail, "TR064", "Out of time"
+	Else
+		data=MyClipboard.GetText
+
+		Reporter.ReportEvent micDone, "TR064", data
+
+		Set fso = CreateObject("Scripting.FileSystemObject")
+		Set ResultFile = fso.CreateTextFile(Environment("Tools_Path") & "\TR064\TR064Result.txt")
+		ResultFile.Write data
+		ResultFile.Close
+	End If
+End Sub
+
+'TR-064 test with Excel table
+Sub TR064_Excel(Case_ID, Save_Case, Wait_Time)
+	'Close Excel application if it already exists
+	Close_Process "EXCEL.EXE"
+
+	Set objExcel = CreateObject("Excel.Application")
+	objExcel.Visible = False
+	Set objWorkBook = objExcel.Workbooks.Open(Environment("TR064_Excel_Path"))
+	Set objWorkSheet = objWorkBook.WorkSheets(1)
+
+	'Get service type
+	iCase = Trim(Mid(Case_ID,1,InStr(Case_ID,".")-1))
+	objWorkSheet.Range("J1").Value = "=VLOOKUP("+Chr(34) & iCase & Chr(34)+",A3:D5000,2,FALSE)"
+    Set mRange = objWorkSheet.Range("J1").MergeArea
+    ServiceType = mRange.Cells(1,1).Value
+
+	'Get cell ID of this case
+    Set objRange = objWorkSheet.Range("A1:A9999")
+    Set objTarget = objRange.Find(Case_ID)
+    If Not objTarget Is Nothing Then
+        caseCell = objTarget.AddressLocal(False,False)
+
+		'Get save csll ID
+		If Save_Case<>"" Then
+			If InStr(1, Save_Case, ":")>0 Then
+				Set objTarget = objRange.Find(Mid(Save_Case ,InStr(Save_Case, ":")+1))
+				saveRow = objTarget.AddressLocal(False,False)
+				saveCell = UCase(Mid(Save_Case,1,1))+Mid(saveRow, 2)
+			Else
+				saveCell = UCase(Mid(Save_Case,1,1))+Mid(caseCell, 2)
+			End If
+		End If
+
+		'Get command
+		Set mRange = objWorkSheet.Range("B" & Mid(caseCell, 2)).MergeArea
+		Command = mRange.Cells(1,1).Value
+
+		'Get argument
+		Set mRange = objWorkSheet.Range("C" & Mid(caseCell, 2)).MergeArea
+		argument = mRange.Cells(1,1).Value
+		arrArgument=Split(argument, Chr(10))
+
+		'Get value
+		Set mRange = objWorkSheet.Range("D" & Mid(caseCell, 2)).MergeArea
+		argValue = mRange.Cells(1,1).Value
+		arrArgValue=Split(argValue, Chr(10))
+
+		'Set argument and value into setValue
+		'argument=value;;argument=value;;...
+		If Trim(arrArgValue(0)) <> "N/A" AND InStr(1, arrArgValue(0), "New") <> 1 Then
+			SetValue = Trim(arrArgument(0)) & "=" & Trim(arrArgValue(0))
+			If UBound(arrArgument)>0 Then
+				For i=1 to UBound(arrArgument)
+					SetValue = SetValue & ";;" & Trim(arrArgument(i)) & "=" & Trim(arrArgValue(i))
+				Next
+			End If
+		Else
+			'For get case
+			SetValue = arrArgValue(0)
+		End If
+		
+		'Clear clipboard
+		Set MyClipboard=CreateObject("Mercury.Clipboard")
+		MyClipboard.Clear
+
+		'Execute TR-064 utility
+		SystemUtil.Run "TR064Utility.exe", Environment("TR064_Protocol") & " " & ServiceType & " " & Command & " " & SetValue, Environment("Tools_Path") & "\TR064\",""
+
+		If Wait_Time="" Then
+			waitTime=120
+		Else
+			waitTime=CInt(Wait_Time)
+		End If
+		runTime=0
+		Do 
+			bWindow=Window("TR064 Console").Exist(1)
+			runTime=runTime+1
+			If bWindow=True And runTime>=waitTime Then			
+				Window("TR064 Console").Close
+			End If
+		Loop While bWindow=True
+
+		If Save_Case<>"" Then
+			If runTime>=waitTime Then
+				'Out of time
+				objWorkSheet.Range(saveCell).Value = "Timeout"
+			Else
+				data=MyClipboard.GetText
+	
+				If data="" Then
+					data="No resopnse"
+				End If
+
+				'Set case or error
+				If InStr(1, data, arrArgument(0))=0  Then
+					Result = Mid(data, InStr(data, ">")+1)
+
+					If InStr(1,Result,"err") > 0 Then
+						Result = Mid(Result,InStr(1,Result,"err"))
+					End If
+					If Instr(1,Result,"Success") > 0 Then
+						Result = Mid(Result,InStr(1,Result,"Success"))
+					End If
+					Result = Mid(Result,1,Len(Result)-2)
+
+					objWorkSheet.Range(saveCell).Value = Result
+				'Get case
+				Else
+					i=InStr(1, data, arrArgument(0))
+					If InStr(i,data,"=")>0 Then
+						j = InStr(Instr(i,data,"="),data,"New") 'find next argument
+						IF j = 0 Then
+							'the argument is the lastest argument
+							Result = Mid(data,InStr(i,data,"=")+1)            
+						Else
+							Result = Mid(data,InStr(i,data,"=")+1,j-InStr(i,mytemp,"=")-1)
+						End If
+
+						k = InStr(Result,CHR(13) & CHR(10))
+						If k > 0 Then
+							Result = Mid(Result,1,k-1)
+						End If
+
+						If Trim(Result) = "" Then
+							Result = "empty_value"
+						End If
+						objWorkSheet.Range(saveCell).Value = Trim(Result)
+					'XML parse error
+					Else
+						objWorkSheet.Range(saveCell).Value = data
+					End If					
+				End If
+			End If
+		End If
+	Else
+		Reporter.ReportEvent micFail, "TR064_Excel", "Case " & Case_ID & " was not found"
+    End If
+
+	objWorkBook.Save
+    objWorkBook.Close
+    objExcel.Quit
+    Set objWorkBook = Nothing
+    Set objWorkSheet = Nothing
+    Set objExcel = Nothing
+End Sub
+
+Sub IxChariot_Start(Test_File)
+End Sub
+
+Sub IxChariot_Stop(Test_File)
+End Sub
+
+'===================Wireless functions======================
+
+
+Function MacAddress_Check(NicName)
+
+	'Method
+	'x = MacAddress_Check("WAN")
+	'msgbox x
+
+	Set objWMIService = GetObject("winmgmts:\\.\root\cimv2")
+	'Search MAC address of NIC
+	Set colNetAdapters = objWMIService.ExecQuery _
+		("Select * From Win32_NetworkAdapter " _
+			& "Where NetConnectionID = '" & NicName & "'")	
+	'Get MacAddress
+	For Each objNetAdapter In colNetAdapters
+		strMACAddress = objNetAdapter.MACAddress
+		MacAddress_Check = strMACAddress
+	Next
+End function
+
+Function Get_AdapterName
+
+	'Method
+	'x = Get_AdapterName
+	'msgbox x
+
+	Set objWMIService = GetObject("winmgmts:\\.\root\cimv2")	
+	'Search MAC address of NIC
+	Set colNetAdapters = objWMIService.ExecQuery _
+		("Select * From Win32_NetworkAdapter " _
+			& "Where NetConnectionID = '" & "WLAN" & "'")	
+	For Each objNetAdapter In colNetAdapters
+		Get_AdapterName = objNetAdapter.Description
+	Next
+End Function
+
+'Open Odyssey Client Manager
+Sub Open_Odyssey_Client_Manager
+	If InStr(1,CStr(Environment("OS")),"XP")>0 Then
+		InvokeApplication	"C:\Program Files\Funk Software\Odyssey Client\odClientMgr.exe"
+	Else
+		InvokeApplication	"C:\Program Files (x86)\Juniper Networks\Odyssey Access Client\odClientMgr.exe"
+	End If
+	
+End Sub
+
+'Select adapter and start wireless connect
+Sub Odyssey_Client_Setting (Adapter, Network)
+	Open_Odyssey_Client_Manager
+	If InStr(1,CStr(Environment("OS")),"XP")>0 Then
+		Dialog("Odyssey Client Manager").WinComboBox("Wireless Adapter").Select Adapter
+		Dialog("Odyssey Client Manager").WinComboBox("network").Select Network
+		Dialog("Odyssey Client Manager").WinCheckBox("Connect to network").Set "On"
+		Dialog("Odyssey Client Manager").Close
+	Else
+		Dialog("Odyssey Access Client").WinTreeView("default").Select "配接卡;WiFi"
+		A = Dialog("Odyssey Access Client").Static("Adapter").GetROProperty("text")
+		If A<>Adapter Then
+			Dialog("Odyssey Access Client").WinTreeView("default").Select "配接卡;other"
+		End If
+		On Error Resume Next
+'		Dialog("Odyssey Access Client").WinComboBox("設定檔(P):").Select Network
+		Dialog("Odyssey Access Client").WinComboBox("網路(N):").Select Network
+		Dialog("Odyssey Access Client").WinCheckBox("連線至網路(C)").Set "On"
+		Dialog("Odyssey Access Client").Close
+	End If
+End Sub
+
+'Disconnect and close Odyssey Client Manager
+Sub Close_Odyssey_Client (Adapter)
+	Open_Odyssey_Client_Manager
+	If InStr(1,CStr(Environment("OS")),"XP")>0 Then
+		Dialog("Odyssey Client Manager").WinComboBox("Wireless Adapter").Select Adapter
+		Dialog("Odyssey Client Manager").WinCheckBox("Connect to network").Set "Off"
+		Dialog("Odyssey Client Manager").Close
+	Else
+		Dialog("Odyssey Access Client").WinTreeView("default").Select "配接卡;WiFi"
+		A = Dialog("Odyssey Access Client").Static("Adapter").GetROProperty("text")
+		If A<>Adapter Then
+			Dialog("Odyssey Access Client").WinTreeView("default").Select "配接卡;other"
+		End If
+		Dialog("Odyssey Access Client").WinComboBox("網路(N):").Select Network
+		Dialog("Odyssey Access Client").WinCheckBox("連線至網路(C)").Set "Off"
+		Dialog("Odyssey Access Client").Close		
+	End If
+	wait 3
+End Sub
+
+'Search content in Odyssey Client Manager
+Sub Wireless_Info_Check(Check_Item, PASS_FAIL)
+	Dialog("Odyssey Client Manager").Activate
+	If Dialog("Odyssey Client Manager").Static("text:="&Check_Item).Exist(1) Then
+		If PASS_FAIL="PASS" Then
+			Reporter.ReportEvent micPass, "Wireless_Info_Check", ""
+		ElseIf PASS_FAIL="FAIL" Then
+			Reporter.ReportEvent micFail, "Wireless_Info_Check(FAIL)", ""
+		End If
+	Else
+		If PASS_FAIL="PASS" Then
+			Reporter.ReportEvent micFail, "Wireless_Info_Check", ""
+		ElseIf PASS_FAIL="FAIL" Then
+			Reporter.ReportEvent micPass, "Wireless_Info_Check(FAIL)", ""
+		End If
+	End If
+End Sub
+
+Function GetOS()
+	Set objWMIService = GetObject("winmgmts:\\.\root\cimv2")	
+
+	Set colOSs = objWMIService.ExecQuery("select * from Win32_OperatingSystem")	
+	For Each colOS in colOSs
+		GetOS=colOS.Caption
+	Next
+End Function
+
+
+'===================Excel function======================
+
+Sub Excel_Write(FileName, Sheet, Cell, CellValue)
+		Set objExcel = CreateObject("Excel.Application")
+		objExcel.Visible = False
+		Set objWorkBook = objExcel.Workbooks.Open(FileName)
+		Set objWorkSheet = objWorkBook.WorkSheets(Sheet)
+
+		objWorkSheet.Range(Cell).Value=CellValue
+
+		objWorkBook.Save
+		objWorkBook.Close
+		objExcel.Quit
+		Set objWorkBook = Nothing
+		Set objWorkSheet = Nothing
+		Set objExcel = Nothing
+End Sub
+
+Function Excel_Read(FileName, Sheet, Cell)
+		Set objExcel = CreateObject("Excel.Application")
+		objExcel.Visible = False
+		Set objWorkBook = objExcel.Workbooks.Open(FileName)
+		Set objWorkSheet = objWorkBook.WorkSheets(Sheet)
+
+		Excel_Read=objWorkSheet.Range(Cell).Value
+
+		objWorkBook.Save
+		objWorkBook.Close
+		objExcel.Quit
+		Set objWorkBook = Nothing
+		Set objWorkSheet = Nothing
+		Set objExcel = Nothing
+End Function
+
+Sub Create_Excel(FileName,SheetName)
+	On Error Resume Next
+   		Set objExcel = CreateObject("Excel.Application")
+		objExcel.Visible = False
+		Set objWorkBook = objExcel.Workbooks.Add
+		objExcel.ActiveSheet.Name = SheetName
+		objWorkBook.SaveAs(FileName)
+
+		objWorkBook.Close
+		objExcel.Quit(False)
+		Set objWorkBook = Nothing
+		Set objWorkSheet = Nothing
+		Set objExcel = Nothing
+End Sub
