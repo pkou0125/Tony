@@ -1,0 +1,160 @@
+Dim Input
+Input = InputBox("New SWBox=1,Old SWBox=0")
+
+Set wmiService = GetObject("winmgmts:\\.\root\cimv2")
+
+Set parallelports = wmiService.ExecQuery("SELECT * FROM Win32_ParallelPort")
+
+For Each port In parallelports
+    Set port_resources = wmiService.ExecQuery("ASSOCIATORS OF {Win32_ParallelPort.DeviceID='" & port.DeviceID & "'} WHERE ResultClass = Win32_PortResource")
+    x=0
+    For Each port_resource In port_resources
+    if x=0 then
+        IONum=port_resource.Caption
+    end if
+    x=x+1
+    Next
+Next
+
+IONum=mid(IONum,instr(IONum,"0x0000")+6,4)
+StartMemory=CLng( "&H" & Trim( IONum ) )
+ControlMemory=StartMemory+2
+
+DestinationPath="C:\AutoTest\Tools\SWBox\"
+
+Set objFSO = CreateObject("Scripting.FileSystemObject")
+
+Set objFile = objFSO.OpenTextFile(DestinationPath & "SW-All-Off.bat",2,True)
+
+Content = "cd/d C:\AutoTest\Tools\SWBox" & vbcrlf
+Content = Content & "lansw " & ControlMemory & " 15" & vbcrlf
+Content = Content & "lansw " & StartMemory & " 0" & vbcrlf
+Content = Content & "lansw " & ControlMemory & " 13" & vbcrlf
+Content = Content & "lansw " & ControlMemory & " 15" & vbcrlf & vbcrlf
+
+Content = Content & "lansw " & ControlMemory & " 15" & vbcrlf
+Content = Content & "lansw " & StartMemory & " 0" & vbcrlf
+Content = Content & "lansw " & ControlMemory & " 7" & vbcrlf
+Content = Content & "lansw " & ControlMemory & " 15" & vbcrlf
+
+objFile.Write Content
+objFile.close
+
+Set objFile = objFSO.OpenTextFile(DestinationPath & "SW_COM1.bat",2,True)
+
+Content = "cd/d C:\AutoTest\Tools\SWBox" & vbcrlf
+Content = Content & "lansw " & ControlMemory & " 15" & vbcrlf
+if Input then
+    Content = Content & "lansw " & StartMemory & " 04" & vbcrlf
+Else
+    Content = Content & "lansw " & StartMemory & " 03" & vbcrlf
+End if
+
+Content = Content & "lansw " & ControlMemory & " 14" & vbcrlf
+Content = Content & "lansw " & ControlMemory & " 15" & vbcrlf
+
+objFile.Write Content
+objFile.close
+
+Set objFile = objFSO.OpenTextFile(DestinationPath & "SW_COM2.bat",2,True)
+
+Content = "cd/d C:\AutoTest\Tools\SWBox" & vbcrlf
+Content = Content & "lansw " & ControlMemory & " 15" & vbcrlf
+if Input then
+    Content = Content & "lansw " & StartMemory & " 08" & vbcrlf
+Else
+    Content = Content & "lansw " & StartMemory & " 07" & vbcrlf
+End if
+Content = Content & "lansw " & ControlMemory & " 14" & vbcrlf
+Content = Content & "lansw " & ControlMemory & " 15" & vbcrlf
+
+objFile.Write Content
+objFile.close
+
+Set objFile = objFSO.OpenTextFile(DestinationPath & "SW_COM3.bat",2,True)
+
+Content = "cd/d C:\AutoTest\Tools\SWBox" & vbcrlf
+Content = Content & "lansw " & ControlMemory & " 15" & vbcrlf
+if Input then
+    Content = Content & "lansw " & StartMemory & " 16" & vbcrlf
+Else
+    Content = Content & "lansw " & StartMemory & " 11" & vbcrlf
+End if
+Content = Content & "lansw " & ControlMemory & " 14" & vbcrlf
+Content = Content & "lansw " & ControlMemory & " 15" & vbcrlf
+
+objFile.Write Content
+objFile.close
+
+Set objFile = objFSO.OpenTextFile(DestinationPath & "SW_COM4.bat",2,True)
+
+Content = "cd/d C:\AutoTest\Tools\SWBox" & vbcrlf
+Content = Content & "lansw " & ControlMemory & " 15" & vbcrlf
+if Input then
+    Content = Content & "lansw " & StartMemory & " 32" & vbcrlf
+Else
+    Content = Content & "lansw " & StartMemory & " 15" & vbcrlf
+End if
+Content = Content & "lansw " & ControlMemory & " 14" & vbcrlf
+Content = Content & "lansw " & ControlMemory & " 15" & vbcrlf
+
+objFile.Write Content
+objFile.close
+
+Set objFile = objFSO.OpenTextFile(DestinationPath & "D0_OFF_D1_OFF.bat",2,True)
+
+Content = "cd/d C:\AutoTest\Tools\SWBox" & vbcrlf
+Content = Content & "lansw " & ControlMemory & " 15" & vbcrlf
+if Input then
+    Content = Content & "lansw " & StartMemory & " 03" & vbcrlf
+Else
+    Content = Content & "lansw " & StartMemory & " 02" & vbcrlf
+End if
+Content = Content & "lansw " & ControlMemory & " 14" & vbcrlf
+Content = Content & "lansw " & ControlMemory & " 15" & vbcrlf
+
+objFile.Write Content
+objFile.close
+
+if Input then
+Set objFile = objFSO.OpenTextFile(DestinationPath & "D0_OFF_D1_ON.bat",2,True)
+
+Content = "cd/d C:\AutoTest\Tools\SWBox" & vbcrlf
+Content = Content & "lansw " & ControlMemory & " 15" & vbcrlf
+Content = Content & "lansw " & StartMemory & " 01" & vbcrlf
+Content = Content & "lansw " & ControlMemory & " 14" & vbcrlf
+Content = Content & "lansw " & ControlMemory & " 15" & vbcrlf
+
+objFile.Write Content
+objFile.close
+End if
+
+Set objFile = objFSO.OpenTextFile(DestinationPath & "D0_ON_D1_OFF.bat",2,True)
+
+Content = "cd/d C:\AutoTest\Tools\SWBox" & vbcrlf
+Content = Content & "lansw " & ControlMemory & " 15" & vbcrlf
+if Input then
+    Content = Content & "lansw " & StartMemory & " 02" & vbcrlf
+Else
+    Content = Content & "lansw " & StartMemory & " 03" & vbcrlf   
+End if
+Content = Content & "lansw " & ControlMemory & " 14" & vbcrlf
+Content = Content & "lansw " & ControlMemory & " 15" & vbcrlf
+
+objFile.Write Content
+objFile.close
+
+if Input then
+Set objFile = objFSO.OpenTextFile(DestinationPath & "D0_ON_D1_ON.bat",2,True)
+
+Content = "cd/d C:\AutoTest\Tools\SWBox" & vbcrlf
+Content = Content & "lansw " & ControlMemory & " 15" & vbcrlf
+Content = Content & "lansw " & StartMemory & " 0" & vbcrlf
+Content = Content & "lansw " & ControlMemory & " 14" & vbcrlf
+Content = Content & "lansw " & ControlMemory & " 15" & vbcrlf
+
+objFile.Write Content
+objFile.close
+
+End if
+
